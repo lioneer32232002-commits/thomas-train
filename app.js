@@ -2,6 +2,7 @@
 
 const COLS = 8, ROWS = 5;
 let cellSize = 60;
+let drawOffsetX = 0, drawOffsetY = 0;   // centres the COLS×ROWS grid in the canvas
 let selectedTool = 'straight-h';
 let isDrawing = false;
 let isRunning = false;
@@ -26,7 +27,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const area = document.getElementById('main-area');
     const w = area.clientWidth, h = area.clientHeight;
     cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
-    // Fill the full area — tracks stay in the COLS×ROWS region, rest is green
+    drawOffsetX = Math.floor((w - COLS * cellSize) / 2);
+    drawOffsetY = Math.floor((h - ROWS * cellSize) / 2);
     gridCanvas.width  = tCanvas.width  = w;
     gridCanvas.height = tCanvas.height = h;
     gridCanvas.style.width  = tCanvas.style.width  = w + 'px';
@@ -61,8 +63,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const scaleY = gridCanvas.height / rect.height;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const px = (clientX - rect.left) * scaleX;
-    const py = (clientY - rect.top)  * scaleY;
+    const px = (clientX - rect.left) * scaleX - drawOffsetX;
+    const py = (clientY - rect.top)  * scaleY - drawOffsetY;
     const col = Math.floor(px / cellSize);
     const row = Math.floor(py / cellSize);
     if (col >= 0 && col < COLS && row >= 0 && row < ROWS) return { row, col };
@@ -247,6 +249,8 @@ function startFreeMode() {
   const area = document.getElementById('main-area');
   const w = area.clientWidth, h = area.clientHeight;
   cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
+  drawOffsetX = Math.floor((w - COLS * cellSize) / 2);
+  drawOffsetY = Math.floor((h - ROWS * cellSize) / 2);
   const gc = document.getElementById('grid-canvas');
   const tc = document.getElementById('train-canvas');
   gc.width = tc.width = w; gc.height = tc.height = h;
@@ -287,6 +291,8 @@ function startLevel(id) {
   const area = document.getElementById('main-area');
   const w = area.clientWidth, h = area.clientHeight;
   cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
+  drawOffsetX = Math.floor((w - COLS * cellSize) / 2);
+  drawOffsetY = Math.floor((h - ROWS * cellSize) / 2);
   const gc = document.getElementById('grid-canvas');
   const tc = document.getElementById('train-canvas');
   gc.width = tc.width = w; gc.height = tc.height = h;
@@ -379,6 +385,7 @@ function autoCheckLevel() {
   if (!loopPath || loopPath.length < 2) return;
   const animPath = buildAnimPath(loopPath, cellSize);
   if (!animPath || animPath.length < 4) return;
+  animPath.forEach(wp => { wp.x += drawOffsetX; wp.y += drawOffsetY; });
 
   // Level complete!
   try { playSuccess(); } catch(e) {}
@@ -456,11 +463,9 @@ function updateGapOverlay() {
       el.dataset.key = key;
       overlay.appendChild(el);
     }
-    // Position
-    const x = g.c * cellSize;
-    const y = g.r * cellSize;
-    el.style.left   = x + 'px';
-    el.style.top    = y + 'px';
+    // Position (include draw offset so indicator aligns with centred canvas)
+    el.style.left   = (drawOffsetX + g.c * cellSize) + 'px';
+    el.style.top    = (drawOffsetY + g.r * cellSize) + 'px';
     el.style.width  = cellSize + 'px';
     el.style.height = cellSize + 'px';
 
@@ -544,21 +549,25 @@ function redrawGrid() {
   const w = gridCanvas.width, h = gridCanvas.height;
   const c = cellSize;
 
-  // Background grass
+  // Full-canvas grass background
   gridCtx.fillStyle = '#81C784';
   gridCtx.fillRect(0, 0, w, h);
 
-  // Grid lines — cover full canvas, not just the logical COLS×ROWS region
+  // Everything else is drawn relative to the centred grid origin
+  gridCtx.save();
+  gridCtx.translate(drawOffsetX, drawOffsetY);
+
+  // Grid lines (only within the COLS×ROWS play area)
   gridCtx.strokeStyle = 'rgba(0,100,0,0.15)';
   gridCtx.lineWidth = 1;
-  for (let r = 0; r * c <= h; r++) {
-    gridCtx.beginPath(); gridCtx.moveTo(0, r*c); gridCtx.lineTo(w, r*c); gridCtx.stroke();
+  for (let r = 0; r <= ROWS; r++) {
+    gridCtx.beginPath(); gridCtx.moveTo(0, r*c); gridCtx.lineTo(COLS*c, r*c); gridCtx.stroke();
   }
-  for (let col = 0; col * c <= w; col++) {
-    gridCtx.beginPath(); gridCtx.moveTo(col*c, 0); gridCtx.lineTo(col*c, h); gridCtx.stroke();
+  for (let col = 0; col <= COLS; col++) {
+    gridCtx.beginPath(); gridCtx.moveTo(col*c, 0); gridCtx.lineTo(col*c, ROWS*c); gridCtx.stroke();
   }
 
-  // Draw tracks
+  // Tracks
   for (const r in grid) {
     for (const col in grid[r]) {
       const cell = grid[r][col];
@@ -570,16 +579,17 @@ function redrawGrid() {
     }
   }
 
-  // In level mode, draw a subtle tint on preset cells to show they're locked
+  // Subtle blue tint on locked preset cells in level mode
   if (gameMode === 'level') {
     levelPreset.forEach(key => {
-      if (isGapCell(...key.split(',').map(Number))) return; // skip gap indicators
+      if (isGapCell(...key.split(',').map(Number))) return;
       const [r, col] = key.split(',').map(Number);
-      // Subtle lock indicator: small padlock icon area
       gridCtx.fillStyle = 'rgba(21,101,192,0.08)';
       gridCtx.fillRect(col*c, r*c, c, c);
     });
   }
+
+  gridCtx.restore();
 }
 
 function handleTest() {
@@ -612,6 +622,7 @@ function handleTest() {
     showMessage('🤔', '鐵軌好像有問題，\n再試試看？', false);
     return;
   }
+  animPath.forEach(wp => { wp.x += drawOffsetX; wp.y += drawOffsetY; });
 
   try { playSuccess(); } catch(e) {}
   isRunning = true;
