@@ -16,6 +16,10 @@ let levelPreset   = new Set();  // "r,c" keys that are locked
 let gapFilled     = new Set();  // "r,c" keys of correctly filled gaps
 let completionTimer = null;
 
+// ── Message overlay mode ──────────────────────────────────────────────────────
+let messageMode = 'info';        // 'info' | 'level-complete' | 'confirm'
+let pendingConfirmAction = null;
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   gridCanvas = document.getElementById('grid-canvas');
@@ -111,12 +115,40 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-free-mode').addEventListener('click', startFreeMode);
   document.getElementById('message-close').addEventListener('click', () => {
     document.getElementById('message-overlay').style.display = 'none';
-    // In level mode "好的！" / "返回選關" goes back to level select
+    if (messageMode === 'confirm') {
+      // "取消" — just dismiss, do nothing
+      messageMode = 'info';
+      pendingConfirmAction = null;
+      return;
+    }
+    // In level mode "返回選關" goes back to level select
     if (gameMode === 'level') {
       exitToSelect();
     }
   });
-  document.getElementById('message-next').addEventListener('click', onNextLevel);
+  document.getElementById('message-next').addEventListener('click', () => {
+    if (messageMode === 'confirm') {
+      document.getElementById('message-overlay').style.display = 'none';
+      messageMode = 'info';
+      const action = pendingConfirmAction;
+      pendingConfirmAction = null;
+      if (action) action();
+      return;
+    }
+    onNextLevel();
+  });
+
+  // Reset progress button
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    showConfirm(
+      '⚠️',
+      '確定要重置所有進度嗎？\n所有關卡和分數都會清除！',
+      '確定重置', '取消',
+      () => {
+        resetProgress();
+      }
+    );
+  });
 
   // Level select buttons (generated)
   buildLevelSelectUI();
@@ -125,6 +157,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // ── Level Select UI ───────────────────────────────────────────────────────────
 function buildLevelSelectUI() {
+  updateScoreDisplay();
   const progress = getLevelProgress();
   const groups = { 1: 'ls-g1', 2: 'ls-g2', 3: 'ls-g3', 4: 'ls-g4', 5: 'ls-g5' };
 
@@ -229,6 +262,7 @@ function showLevelSelect() {
     isRunning = false;
   }
   if (completionTimer) { clearTimeout(completionTimer); completionTimer = null; }
+  updateScoreDisplay();
 }
 
 function exitToSelect() {
@@ -423,15 +457,21 @@ function autoCheckLevel() {
 }
 
 function showLevelComplete(levelId) {
+  messageMode = 'level-complete';
   const nextId = levelId + 1;
   const hasNext = nextId <= 25;
+  const level = getLevelById(levelId);
+  const earned = level ? level.group * 10 : 0;
+  const totalScore = getScore();
+  const maxScore = getMaxScore();
 
   document.getElementById('message-icon').textContent = '🎉';
   document.getElementById('message-text').textContent =
-    `第 ${levelId} 關完成！\n湯瑪士好棒棒！ 🚂⭐`;
+    `第 ${levelId} 關完成！🚂\n獲得 +${earned} 分！⭐\n總分：${totalScore} / ${maxScore}`;
 
   document.getElementById('message-close').textContent = '返回選關';
   const nextBtn = document.getElementById('message-next');
+  nextBtn.textContent = '下一關 →';
   if (hasNext && isLevelUnlocked(nextId, getLevelProgress())) {
     nextBtn.style.display = '';
     nextBtn.dataset.nextId = nextId;
@@ -536,6 +576,28 @@ function saveLevelComplete(id) {
       completed: Array.from(progress.completed)
     }));
   } catch(e) {}
+}
+
+function resetProgress() {
+  try { localStorage.removeItem('thomas_progress'); } catch(e) {}
+  refreshLevelSelectUI();
+  updateScoreDisplay();
+}
+
+// ── Scoring ───────────────────────────────────────────────────────────────────
+// Points per group: group × 10  (G1=10, G2=20, G3=30, G4=40, G5=50) → max 750
+function getScore() {
+  const progress = getLevelProgress();
+  return LEVELS.reduce((sum, l) => sum + (progress.completed.has(l.id) ? l.group * 10 : 0), 0);
+}
+
+function getMaxScore() {
+  return LEVELS.reduce((sum, l) => sum + l.group * 10, 0);
+}
+
+function updateScoreDisplay() {
+  const el = document.getElementById('ls-score');
+  if (el) el.textContent = `⭐ ${getScore()} / ${getMaxScore()} 分`;
 }
 
 // ── Hint desc (dismisses on click) ───────────────────────────────────────────
@@ -670,10 +732,24 @@ function handleClear() {
 }
 
 function showMessage(icon, text, showNext) {
+  messageMode = 'info';
   document.getElementById('message-icon').textContent = icon;
   document.getElementById('message-text').textContent = text;
   document.getElementById('message-close').textContent = '好的！';
   document.getElementById('message-next').style.display = showNext ? '' : 'none';
+  document.getElementById('message-overlay').style.display = 'flex';
+}
+
+function showConfirm(icon, text, confirmLabel, cancelLabel, action) {
+  messageMode = 'confirm';
+  pendingConfirmAction = action;
+  document.getElementById('message-icon').textContent = icon;
+  document.getElementById('message-text').textContent = text;
+  document.getElementById('message-close').textContent = cancelLabel || '取消';
+  const nextBtn = document.getElementById('message-next');
+  nextBtn.style.display = '';
+  nextBtn.textContent = confirmLabel || '確定';
+  nextBtn.dataset.nextId = '';
   document.getElementById('message-overlay').style.display = 'flex';
 }
 
