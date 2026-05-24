@@ -17,6 +17,7 @@ const TRACK_DEFS = {
   'curve-sw':   { connects: ['S','W'], draw: drawCurveSW },
   'tunnel':     { connects: ['W','E'], draw: drawTunnel,  special: 'tunnel' },
   'bridge':     { connects: ['W','E'], draw: drawBridge,  special: 'bridge' },
+  'station':    { connects: ['W','E'], draw: drawStation, special: 'station' },
 };
 
 let grid = {};
@@ -152,6 +153,57 @@ function drawTunnel(ctx, x, y, c) {
   ctx.arc(x + c / 2, mid + W * 1.8, W * 2.2, Math.PI, 0);
   ctx.rect(x + c / 2 - W * 2.2, mid + W * 1.8, W * 4.4, W * 2.5);
   ctx.fill();
+}
+
+function drawStation(ctx, x, y, c) {
+  // Draw the track base first (identical to straight-h)
+  drawStraightH(ctx, x, y, c);
+  const W = c * W_FRAC;
+
+  // Platform: light gray rectangle in lower half
+  ctx.fillStyle = '#CFD8DC';
+  ctx.fillRect(x + c * 0.05, y + c * 0.52, c * 0.9, c * 0.22);
+  // Platform edge stripe
+  ctx.fillStyle = '#B0BEC5';
+  ctx.fillRect(x + c * 0.05, y + c * 0.52, c * 0.9, c * 0.04);
+
+  // Station building body (upper half)
+  ctx.fillStyle = '#FFF9C4';
+  ctx.fillRect(x + c * 0.18, y + c * 0.12, c * 0.64, c * 0.40);
+
+  // Roof: red trapezoid / triangle
+  ctx.fillStyle = '#E53935';
+  ctx.beginPath();
+  ctx.moveTo(x + c * 0.10, y + c * 0.12);         // left eave
+  ctx.lineTo(x + c * 0.90, y + c * 0.12);         // right eave
+  ctx.lineTo(x + c * 0.75, y + c * 0.02);         // right peak
+  ctx.lineTo(x + c * 0.25, y + c * 0.02);         // left peak
+  ctx.closePath();
+  ctx.fill();
+
+  // Window: small square
+  ctx.fillStyle = '#90CAF9';
+  ctx.fillRect(x + c * 0.38, y + c * 0.20, c * 0.24, c * 0.18);
+  // Window frame
+  ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + c * 0.38, y + c * 0.20, c * 0.24, c * 0.18);
+  // Window cross
+  ctx.beginPath();
+  ctx.moveTo(x + c * 0.50, y + c * 0.20);
+  ctx.lineTo(x + c * 0.50, y + c * 0.38);
+  ctx.moveTo(x + c * 0.38, y + c * 0.29);
+  ctx.lineTo(x + c * 0.62, y + c * 0.29);
+  ctx.stroke();
+
+  // Building outline
+  ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + c * 0.18, y + c * 0.12, c * 0.64, c * 0.40);
+
+  // Re-draw rails on top so they aren't obscured
+  const mid = y + c / 2;
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 }
 
 function drawBridge(ctx, x, y, c) {
@@ -302,9 +354,9 @@ function buildAnimPath(loopPath, cellSize) {
     const entryDir = getCellDir(loopPath[(i - 1 + n) % n], [r, col]);
     const exitDir  = getCellDir([r, col], loopPath[(i + 1) % n]);
     const mid = py + c / 2;
-    const sp = (type === 'tunnel') ? 'tunnel' : (type === 'bridge') ? 'bridge' : null;
+    const sp = (type === 'tunnel') ? 'tunnel' : (type === 'bridge') ? 'bridge' : (type === 'station') ? 'station' : null;
 
-    if (type === 'straight-h' || type === 'tunnel' || type === 'bridge') {
+    if (type === 'straight-h' || type === 'tunnel' || type === 'bridge' || type === 'station') {
       const goRight = (exitDir === 'E');
       const trackY  = (type === 'bridge') ? py + c * 0.4 : mid;
       for (let t = 0; t <= S; t++) {

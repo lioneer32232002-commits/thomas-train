@@ -126,7 +126,7 @@ window.addEventListener('DOMContentLoaded', () => {
 // ── Level Select UI ───────────────────────────────────────────────────────────
 function buildLevelSelectUI() {
   const progress = getLevelProgress();
-  const groups = { 1: 'ls-g1', 2: 'ls-g2', 3: 'ls-g3' };
+  const groups = { 1: 'ls-g1', 2: 'ls-g2', 3: 'ls-g3', 4: 'ls-g4', 5: 'ls-g5' };
 
   LEVELS.forEach(level => {
     const containerId = groups[level.group];
@@ -158,7 +158,7 @@ function buildLevelSelectUI() {
 
 function refreshLevelSelectUI() {
   // Clear existing buttons
-  ['ls-g1','ls-g2','ls-g3'].forEach(id => {
+  ['ls-g1','ls-g2','ls-g3','ls-g4','ls-g5'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.innerHTML = '';
   });
@@ -193,6 +193,24 @@ function isLevelUnlocked(id, progress) {
     const g3Levels = LEVELS.filter(l => l.group === 3);
     const firstG3 = g3Levels[0];
     if (id === firstG3.id) return true;
+    return progress.completed.has(id - 1);
+  }
+  if (level.group === 4) {
+    const g3Levels = LEVELS.filter(l => l.group === 3);
+    const allG3Done = g3Levels.every(l => progress.completed.has(l.id));
+    if (!allG3Done) return false;
+    const g4Levels = LEVELS.filter(l => l.group === 4);
+    const firstG4 = g4Levels[0];
+    if (id === firstG4.id) return true;
+    return progress.completed.has(id - 1);
+  }
+  if (level.group === 5) {
+    const g4Levels = LEVELS.filter(l => l.group === 4);
+    const allG4Done = g4Levels.every(l => progress.completed.has(l.id));
+    if (!allG4Done) return false;
+    const g5Levels = LEVELS.filter(l => l.group === 5);
+    const firstG5 = g5Levels[0];
+    if (id === firstG5.id) return true;
     return progress.completed.has(id - 1);
   }
   return false;
@@ -406,7 +424,7 @@ function autoCheckLevel() {
 
 function showLevelComplete(levelId) {
   const nextId = levelId + 1;
-  const hasNext = nextId <= 15;
+  const hasNext = nextId <= 25;
 
   document.getElementById('message-icon').textContent = '🎉';
   document.getElementById('message-text').textContent =
