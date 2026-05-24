@@ -28,6 +28,20 @@ let levelPreset   = new Set();  // "r,c" keys that are locked
 let gapFilled     = new Set();  // "r,c" keys of correctly filled gaps
 let completionTimer = null;
 
+// ── Dino event state ──────────────────────────────────────────────────────────
+let dinoEventTriggered = false;
+let dinoRunning        = false;
+let dinoPos            = 0;
+const DINO_SPEED       = 0.10;
+
+let dinoPath      = [];
+let dinoLoop_path = [];
+
+let dinoStomps  = [];
+let brokenCells = new Set();
+
+let dinoAnimId  = null;
+
 // ── Hint system ───────────────────────────────────────────────────────────────
 let hintsRemaining = 0;
 let hintsRevealed  = new Set();   // "r,c" keys whose hint icon has been revealed
@@ -400,6 +414,12 @@ function startLevel(id) {
   currentLevelId = id;
   isRunning = false;
 
+  // Reset dino event state
+  dinoEventTriggered = false;
+  dinoRunning = false;
+  brokenCells.clear();
+  if (dinoAnimId) { cancelAnimationFrame(dinoAnimId); dinoAnimId = null; }
+
   updateToolbarVisibility();
 
   // Reset gap tracking
@@ -524,6 +544,15 @@ function autoCheckLevel() {
   const animPath = buildAnimPath(loopPath, cellSize);
   if (!animPath || animPath.length < 4) return;
   animPath.forEach(wp => { wp.x += drawOffsetX; wp.y += drawOffsetY; });
+
+  // ── Dino event check ─────────────────────────────────────────────────────
+  const _dinoLevels = getDinoEventLevels();
+  if (_dinoLevels.includes(currentLevelId) && !dinoEventTriggered) {
+    dinoEventTriggered = true;
+    const _animPath = animPath.slice();
+    _startDinoEvent(result.path, _animPath);
+    return;   // don't complete level yet
+  }
 
   // Level complete!
   try { playSuccess(); } catch(e) {}
@@ -765,6 +794,7 @@ function saveLevelComplete(id) {
 
 function resetProgress() {
   try { localStorage.removeItem('thomas_progress'); } catch(e) {}
+  try { localStorage.removeItem('thomas_dino_levels'); } catch(e) {}
   refreshLevelSelectUI();
   updateScoreDisplay();
 }
@@ -885,6 +915,12 @@ function redrawGrid() {
       gridCtx.fillRect(col*c, r*c, c, c);
     });
   }
+
+  // Draw crack overlays for dino-broken cells
+  brokenCells.forEach(key => {
+    const [rc, cc] = key.split(',').map(Number);
+    _drawCrackOverlay(gridCtx, cc*c, rc*c, c);
+  });
 
   gridCtx.restore();
 }
@@ -1115,4 +1151,358 @@ function _drawTRex(ctx, cx, baseY, s, color, flip) {
   ctx.fillStyle = '#1a1a1a';
   ctx.beginPath(); ctx.arc(cx + s*0.67, baseY - s*0.95, s*0.03, 0, Math.PI*2); ctx.fill();
   ctx.restore();
+}
+
+// ── Dino event ────────────────────────────────────────────────────────────────
+
+function getDinoEventLevels() {
+  const KEY = 'thomas_dino_levels';
+  try {
+    const s = localStorage.getItem(KEY);
+    if (s) return JSON.parse(s);
+  } catch(e) {}
+  // Pick 2 random from groups 4-5
+  const pool = LEVELS.filter(l => l.group >= 4).map(l => l.id);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const picks = pool.slice(0, 2);
+  try { localStorage.setItem(KEY, JSON.stringify(picks)); } catch(e) {}
+  return picks;
+}
+
+function _startDinoEvent(loopPath, pxPath) {
+  dinoPath      = pxPath;
+  dinoLoop_path = loopPath;
+  dinoRunning   = false;
+  brokenCells.clear();
+
+  // Pick 3 stomp positions: tile indices at ~20%, ~50%, ~75% of loop
+  const n = loopPath.length;
+  const fracs = [0.22, 0.50, 0.76];
+  dinoStomps = [];
+  const used = new Set();
+  fracs.forEach(fr => {
+    let best = null;
+    for (let delta = 0; delta < n; delta++) {
+      for (const sign of [1, -1]) {
+        const ti = ((Math.floor(fr * n) + sign * delta) % n + n) % n;
+        const [r, c] = loopPath[ti];
+        const key = `${r},${c}`;
+        if (used.has(key)) continue;
+        if (!isPresetCell(r, c)) continue;
+        const cell = getCell(r, c);
+        if (!cell) continue;
+        best = { ti, r, c, origType: cell.type };
+        break;
+      }
+      if (best) break;
+    }
+    if (best) { used.add(`${best.r},${best.c}`); dinoStomps.push(best); }
+  });
+
+  // Assign path fractions for stomp triggers
+  const pn = dinoPath.length;
+  dinoStomps.forEach(s => {
+    s.pathIdx      = Math.floor((s.ti / n) * pn);
+    s.phase        = 'pending';
+    s.timer        = 0;
+    s.animLegRaise = 0;
+  });
+
+  // Warning overlay
+  const warn = document.createElement('div');
+  warn.id = 'dino-warning';
+  warn.innerHTML = `
+    <div class="dino-warn-box">
+      <div class="dino-warn-icon">🦖</div>
+      <div class="dino-warn-text">⚠️ 暴龍出現了！</div>
+      <div class="dino-warn-sub">快逃！軌道要被踩壞了！</div>
+    </div>`;
+  document.body.appendChild(warn);
+  _playDinoRoar();
+
+  setTimeout(() => {
+    warn.style.animation = 'dinoWarnOut 0.4s ease-in forwards';
+    setTimeout(() => { warn.remove(); _runDinoLoop(); }, 400);
+  }, 2000);
+}
+
+function _runDinoLoop() {
+  dinoRunning = true;
+  dinoPos     = 0;
+
+  function frame() {
+    if (!dinoRunning) return;
+
+    trainCtx.clearRect(0, 0, trainCanvas.width, trainCanvas.height);
+
+    const totalPts = dinoPath.length;
+    const idx = Math.floor(dinoPos) % totalPts;
+    const wp  = dinoPath[idx];
+    if (!wp) { dinoAnimId = requestAnimationFrame(frame); return; }
+
+    // Check stomp triggers
+    let activeStomps = dinoStomps.filter(s => s.phase !== 'pending' && s.phase !== 'done');
+    let currentStomp = activeStomps[0] || null;
+
+    if (!currentStomp) {
+      for (const s of dinoStomps) {
+        if (s.phase === 'pending' && idx >= s.pathIdx) {
+          s.phase = 'raising';
+          s.timer = 0;
+          currentStomp = s;
+          break;
+        }
+      }
+    }
+
+    // Update stomp animation
+    let isStomping = false;
+    if (currentStomp) {
+      currentStomp.timer++;
+      if (currentStomp.phase === 'raising') {
+        currentStomp.animLegRaise = Math.min(1, currentStomp.timer / 25);
+        isStomping = true;
+        if (currentStomp.timer >= 30) {
+          currentStomp.phase = 'slamming';
+          currentStomp.timer = 0;
+        }
+      } else if (currentStomp.phase === 'slamming') {
+        currentStomp.animLegRaise = Math.max(0, 1 - currentStomp.timer / 8);
+        isStomping = true;
+        if (currentStomp.timer === 3) {
+          _doStomp(currentStomp, wp);
+        }
+        if (currentStomp.timer >= 35) {
+          currentStomp.phase = 'done';
+          currentStomp = null;
+        }
+      }
+    }
+
+    // Advance position (pause while stomping)
+    if (!currentStomp) dinoPos += DINO_SPEED;
+
+    // Draw crack overlays on train canvas so they update smoothly
+    brokenCells.forEach(key => {
+      const [r2, c2] = key.split(',').map(Number);
+      _drawCrackOverlay(trainCtx,
+        drawOffsetX + c2 * cellSize,
+        drawOffsetY + r2 * cellSize,
+        cellSize);
+    });
+
+    // Draw T-Rex
+    const legSwing = Math.sin(dinoPos * 0.25) * 8;
+    _drawDinoWalker(trainCtx, wp.x, wp.y, wp.angle,
+                    isStomping ? (currentStomp ? currentStomp.animLegRaise : 0) : 0,
+                    legSwing);
+
+    // Check completion
+    if (dinoPos >= totalPts) {
+      _finishDinoEvent();
+      return;
+    }
+
+    dinoAnimId = requestAnimationFrame(frame);
+  }
+  dinoAnimId = requestAnimationFrame(frame);
+}
+
+function _doStomp(stomp, wp) {
+  const key = `${stomp.r},${stomp.c}`;
+  brokenCells.add(key);
+  _playDinoStomp();
+  _screenShake(10, 400);
+  redrawGrid();
+}
+
+function _finishDinoEvent() {
+  dinoRunning = false;
+  cancelAnimationFrame(dinoAnimId);
+  trainCtx.clearRect(0, 0, trainCanvas.width, trainCanvas.height);
+  brokenCells.clear();
+
+  // Convert stomped preset tiles to new gaps
+  dinoStomps.forEach(s => {
+    const key = `${s.r},${s.c}`;
+    levelPreset.delete(key);
+    setCell(s.r, s.c, null);
+    levelGaps.push({ r: s.r, c: s.c, type: s.origType });
+  });
+
+  redrawGrid();
+  updateGapOverlay();
+  updateGapsCounter();
+  updateHintBtn();
+
+  setTimeout(() => {
+    showMessage('🦖', '暴龍踩壞了 3 條軌道！\n幫湯瑪士修好它們！', false);
+  }, 300);
+}
+
+function _screenShake(intensity, durationMs) {
+  const area = document.getElementById('main-area');
+  const t0 = performance.now();
+  function shake(t) {
+    const elapsed = t - t0;
+    if (elapsed >= durationMs) { area.style.transform = ''; return; }
+    const decay = 1 - elapsed / durationMs;
+    const dx = (Math.random() - 0.5) * intensity * decay * 2;
+    const dy = (Math.random() - 0.5) * intensity * decay * 2;
+    area.style.transform = `translate(${dx}px,${dy}px)`;
+    requestAnimationFrame(shake);
+  }
+  requestAnimationFrame(shake);
+}
+
+function _drawCrackOverlay(ctx, x, y, c) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(40,0,0,0.45)';
+  ctx.fillRect(x, y, c, c);
+  ctx.strokeStyle = '#B71C1C';
+  ctx.lineWidth = Math.max(2, c * 0.025);
+  const cks = [
+    [[0.15,0.25],[0.48,0.52],[0.82,0.42]],
+    [[0.48,0.52],[0.38,0.82]],
+    [[0.28,0.38],[0.48,0.52],[0.62,0.28]],
+    [[0.48,0.52],[0.72,0.72]],
+  ];
+  cks.forEach(pts => {
+    ctx.beginPath();
+    ctx.moveTo(x + c*pts[0][0], y + c*pts[0][1]);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(x + c*pts[i][0], y + c*pts[i][1]);
+    ctx.stroke();
+  });
+  ctx.fillStyle = '#6D4C41';
+  [[0.2,0.8],[0.75,0.85],[0.85,0.2],[0.1,0.5]].forEach(([fx,fy]) => {
+    ctx.beginPath(); ctx.arc(x+c*fx, y+c*fy, c*0.035, 0, Math.PI*2); ctx.fill();
+  });
+  ctx.restore();
+}
+
+function _drawDinoWalker(ctx, x, y, angle, legRaise, legSwing) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
+  const S = 1.6;
+  ctx.scale(S, S);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath(); ctx.ellipse(0, 32, 32, 9, 0, 0, Math.PI*2); ctx.fill();
+
+  // Body
+  ctx.fillStyle = '#4E342E';
+  ctx.beginPath(); ctx.ellipse(-4, 0, 30, 20, -0.1, 0, Math.PI*2); ctx.fill();
+
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(-28, 2);
+  ctx.bezierCurveTo(-42, 6, -54, -4, -58, -12);
+  ctx.bezierCurveTo(-54, -6, -44, 10, -28, 10);
+  ctx.fill();
+
+  // Head
+  ctx.fillStyle = '#4E342E';
+  ctx.beginPath(); ctx.ellipse(22, -16, 20, 13, 0.35, 0, Math.PI*2); ctx.fill();
+
+  // Snout
+  ctx.fillStyle = '#6D4C41';
+  ctx.beginPath(); ctx.ellipse(38, -13, 13, 7, 0.15, 0, Math.PI*2); ctx.fill();
+
+  // Lower jaw (open slightly during stomp)
+  ctx.fillStyle = '#5D4037';
+  const jawAngle = legRaise * 0.3;
+  ctx.save(); ctx.translate(28,-10); ctx.rotate(jawAngle);
+  ctx.beginPath(); ctx.ellipse(10,-4,12,5,0.15,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#FFFDE7';
+  for(let i=0;i<4;i++){
+    ctx.beginPath(); ctx.moveTo(i*6,0); ctx.lineTo(i*6+3,6); ctx.lineTo(i*6+6,0); ctx.fill();
+  }
+  ctx.restore();
+
+  // Eye (angry)
+  ctx.fillStyle = '#FFEB3B';
+  ctx.beginPath(); ctx.ellipse(18, -22, 6, 5, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#E53935';
+  ctx.beginPath(); ctx.ellipse(19, -22, 4, 4, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.beginPath(); ctx.arc(20, -22, 2, 0, Math.PI*2); ctx.fill();
+  // Angry brow
+  ctx.strokeStyle='#3E2723'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(12,-29); ctx.lineTo(26,-25); ctx.stroke();
+
+  // Tiny arms
+  ctx.fillStyle='#5D4037';
+  ctx.beginPath(); ctx.ellipse(14, 4, 8, 5, 0.9, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#3E2723';
+  ctx.fillRect(19, 7, 5, 3); ctx.fillRect(22, 9, 4, 3);
+
+  // Legs
+  const raisedY = 14 - legRaise * 18;
+  const raisedH = 22 + legRaise * 4;
+
+  // Left leg (walking swing)
+  ctx.fillStyle='#4E342E';
+  ctx.fillRect(-10, 16, 11, 20 + Math.max(0, legSwing * 0.4));
+  ctx.fillStyle='#3E2723'; ctx.fillRect(-13, 35+Math.max(0,legSwing*0.4), 17, 7);
+
+  // Right leg (stomp leg)
+  ctx.fillStyle='#4E342E';
+  ctx.fillRect(4, raisedY, 11, raisedH);
+  ctx.fillStyle='#3E2723'; ctx.fillRect(2, raisedY+raisedH, 17, 7);
+
+  // Impact dust when slamming
+  if (legRaise < 0.15 && legRaise >= 0) {
+    ctx.fillStyle='rgba(120,80,40,0.55)';
+    for(let d=0;d<5;d++){
+      const a=d/5*Math.PI*2, dist=20*(0.15-legRaise)/0.15;
+      ctx.beginPath(); ctx.arc(10+Math.cos(a)*dist, 44+Math.sin(a)*dist*0.4, 3+d, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  ctx.restore();
+}
+
+function _playDinoRoar() {
+  try {
+    const ac = new (window.AudioContext||window.webkitAudioContext)();
+    [0, 0.15, 0.35].forEach(delay => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.connect(g); g.connect(ac.destination);
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(90 - delay*60, ac.currentTime+delay);
+      o.frequency.exponentialRampToValueAtTime(35, ac.currentTime+delay+0.7);
+      g.gain.setValueAtTime(0.55, ac.currentTime+delay);
+      g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+delay+0.9);
+      o.start(ac.currentTime+delay); o.stop(ac.currentTime+delay+0.9);
+    });
+  } catch(e) {}
+}
+
+function _playDinoStomp() {
+  try {
+    const ac = new (window.AudioContext||window.webkitAudioContext)();
+    // Deep thud
+    const o=ac.createOscillator(), g=ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.type='sine';
+    o.frequency.setValueAtTime(55, ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(18, ac.currentTime+0.35);
+    g.gain.setValueAtTime(0.9, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+0.5);
+    o.start(ac.currentTime); o.stop(ac.currentTime+0.5);
+    // Crack noise burst
+    const len=ac.sampleRate*0.18, buf=ac.createBuffer(1,len,ac.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2)*0.7;
+    const src=ac.createBufferSource();
+    const bp=ac.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=600; bp.Q.value=1.5;
+    src.buffer=buf; src.connect(bp); bp.connect(ac.destination);
+    src.start(ac.currentTime+0.03);
+  } catch(e) {}
 }
