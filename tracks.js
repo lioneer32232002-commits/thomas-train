@@ -1,10 +1,13 @@
 // Track definitions
-// Each track type defines: which sides it connects (N/S/E/W)
-// and how to draw it on the grid cell
+// Consistent rail geometry across all types:
+//   R  = c / 2           (arc radius for curves)
+//   W  = c * 0.12        (half-gauge — same as straight tracks)
+// Curve centers are at the corner of the cell diagonally opposite the "bulge":
+//   NE → top-right  corner  (x+c, y)
+//   NW → top-left   corner  (x,   y)
+//   SE → bot-right  corner  (x+c, y+c)
+//   SW → bot-left   corner  (x,   y+c)
 
-const CELL = 60; // pixels per grid cell
-
-// Connection sides: N=top, S=bottom, E=right, W=left
 const TRACK_DEFS = {
   'straight-h': { connects: ['W','E'], draw: drawStraightH },
   'straight-v': { connects: ['N','S'], draw: drawStraightV },
@@ -12,417 +15,314 @@ const TRACK_DEFS = {
   'curve-nw':   { connects: ['N','W'], draw: drawCurveNW },
   'curve-se':   { connects: ['S','E'], draw: drawCurveSE },
   'curve-sw':   { connects: ['S','W'], draw: drawCurveSW },
-  'tunnel':     { connects: ['W','E'], draw: drawTunnel, special: 'tunnel' },
-  'bridge':     { connects: ['W','E'], draw: drawBridge, special: 'bridge' },
+  'tunnel':     { connects: ['W','E'], draw: drawTunnel,  special: 'tunnel' },
+  'bridge':     { connects: ['W','E'], draw: drawBridge,  special: 'bridge' },
 };
 
-// Grid state: grid[row][col] = { type: 'straight-h', ... } or null
 let grid = {};
 let gridCols = 0;
 let gridRows = 0;
 
-function initGrid(cols, rows) {
-  gridCols = cols;
-  gridRows = rows;
-  grid = {};
-}
-
-function getCell(row, col) {
-  return (grid[row] && grid[row][col]) || null;
-}
-
+function initGrid(cols, rows) { gridCols = cols; gridRows = rows; grid = {}; }
+function getCell(row, col)     { return (grid[row] && grid[row][col]) || null; }
 function setCell(row, col, type) {
   if (!grid[row]) grid[row] = {};
-  if (type === null) {
-    delete grid[row][col];
-  } else {
-    grid[row][col] = { type };
-  }
+  if (type === null) delete grid[row][col];
+  else grid[row][col] = { type };
 }
+function clearGrid() { grid = {}; }
 
-function clearGrid() {
-  grid = {};
-}
+// ── Drawing primitives ───────────────────────────────────────────────────────
 
-// ── Drawing helpers ──────────────────────────────────────────────
+const W_FRAC = 0.12; // half-gauge as fraction of c
 
-function drawStraightH(ctx, x, y, c) {
-  const mid = y + c/2;
-  // Ground
+function drawBed(ctx, x, y, c) {
   ctx.fillStyle = '#A5D6A7';
   ctx.fillRect(x, y, c, c);
-  // Ties (crosspieces)
+}
+
+function drawStraightH(ctx, x, y, c) {
+  const mid = y + c / 2, W = c * W_FRAC;
+  drawBed(ctx, x, y, c);
+  // Ballast
+  ctx.fillStyle = '#BCAAA4';
+  ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
+  // Ties
   ctx.fillStyle = '#6D4C41';
-  for (let i = 0.15; i < 1; i += 0.22) {
-    ctx.fillRect(x + c*i, mid - c*0.18, c*0.1, c*0.36);
+  for (let i = 0.07; i < 1; i += 0.19) {
+    ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
   }
   // Rails
-  ctx.strokeStyle = '#757575';
-  ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(x, mid - c*0.12); ctx.lineTo(x+c, mid - c*0.12); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x, mid + c*0.12); ctx.lineTo(x+c, mid + c*0.12); ctx.stroke();
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 }
 
 function drawStraightV(ctx, x, y, c) {
-  const mid = x + c/2;
-  ctx.fillStyle = '#A5D6A7';
-  ctx.fillRect(x, y, c, c);
+  const mid = x + c / 2, W = c * W_FRAC;
+  drawBed(ctx, x, y, c);
+  ctx.fillStyle = '#BCAAA4';
+  ctx.fillRect(mid - W * 1.8, y, W * 3.6, c);
   ctx.fillStyle = '#6D4C41';
-  for (let i = 0.15; i < 1; i += 0.22) {
-    ctx.fillRect(mid - c*0.18, y + c*i, c*0.36, c*0.1);
+  for (let i = 0.07; i < 1; i += 0.19) {
+    ctx.fillRect(mid - W * 1.8, y + c * i, W * 3.6, c * 0.085);
   }
-  ctx.strokeStyle = '#757575';
-  ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(mid - c*0.12, y); ctx.lineTo(mid - c*0.12, y+c); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(mid + c*0.12, y); ctx.lineTo(mid + c*0.12, y+c); ctx.stroke();
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(mid - W, y); ctx.lineTo(mid - W, y + c); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(mid + W, y); ctx.lineTo(mid + W, y + c); ctx.stroke();
 }
 
-function drawCurve(ctx, x, y, c, cx, cy, startAngle, endAngle) {
-  ctx.fillStyle = '#A5D6A7';
-  ctx.fillRect(x, y, c, c);
-  const r1 = c * 0.88, r2 = c * 1.12;
-  ctx.strokeStyle = '#6D4C41';
-  ctx.lineWidth = c * 0.22;
-  ctx.beginPath();
-  ctx.arc(cx, cy, (r1+r2)/2, startAngle, endAngle);
-  ctx.stroke();
-  ctx.strokeStyle = '#757575';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.arc(cx, cy, r1, startAngle, endAngle); ctx.stroke();
-  ctx.beginPath(); ctx.arc(cx, cy, r2, startAngle, endAngle); ctx.stroke();
-  // Ties along curve
-  ctx.strokeStyle = '#6D4C41';
-  ctx.lineWidth = c * 0.08;
-  const steps = 5;
-  for (let i = 0; i <= steps; i++) {
-    const a = startAngle + (endAngle - startAngle) * (i / steps);
+// Unified curve drawer
+// cx,cy = arc center (cell corner); R = c/2
+// aStart,aEnd = arc start/end angles; ccw = anticlockwise
+function drawCurve(ctx, x, y, c, cx, cy, aStart, aEnd, ccw) {
+  const W = c * W_FRAC, R = c / 2;
+  drawBed(ctx, x, y, c);
+
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, c, c); ctx.clip();
+
+  // Ballast arc
+  ctx.strokeStyle = '#BCAAA4'; ctx.lineWidth = W * 3.6;
+  ctx.beginPath(); ctx.arc(cx, cy, R, aStart, aEnd, ccw); ctx.stroke();
+
+  // Ties (6 evenly spaced crosspieces)
+  let span = aEnd - aStart;
+  if (ccw)  { if (span > 0)  span -= 2 * Math.PI; }
+  else       { if (span < 0)  span += 2 * Math.PI; }
+  ctx.strokeStyle = '#6D4C41'; ctx.lineWidth = c * 0.07;
+  for (let i = 0; i <= 5; i++) {
+    const a = aStart + span * (i / 5);
     ctx.beginPath();
-    ctx.moveTo(cx + r1*Math.cos(a), cy + r1*Math.sin(a));
-    ctx.lineTo(cx + r2*Math.cos(a), cy + r2*Math.sin(a));
+    ctx.moveTo(cx + (R - W * 1.8) * Math.cos(a), cy + (R - W * 1.8) * Math.sin(a));
+    ctx.lineTo(cx + (R + W * 1.8) * Math.cos(a), cy + (R + W * 1.8) * Math.sin(a));
     ctx.stroke();
   }
+
+  // Rails
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(cx, cy, R - W, aStart, aEnd, ccw); ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, R + W, aStart, aEnd, ccw); ctx.stroke();
+
+  ctx.restore();
 }
 
+// NE: top → right, bulge top-right, center = (x+c, y)
 function drawCurveNE(ctx, x, y, c) {
-  drawCurve(ctx, x, y, c, x, y+c, -Math.PI/2, 0);
+  drawCurve(ctx, x, y, c, x + c, y,     Math.PI,     Math.PI / 2,   true);
 }
+// NW: top → left, bulge top-left, center = (x, y)
 function drawCurveNW(ctx, x, y, c) {
-  drawCurve(ctx, x, y, c, x+c, y+c, Math.PI, -Math.PI/2);
+  drawCurve(ctx, x, y, c, x,     y,     0,           Math.PI / 2,   false);
 }
+// SE: bottom → right, bulge bot-right, center = (x+c, y+c)
 function drawCurveSE(ctx, x, y, c) {
-  drawCurve(ctx, x, y, c, x, y, 0, Math.PI/2);
+  drawCurve(ctx, x, y, c, x + c, y + c, Math.PI,    -Math.PI / 2,   false);
 }
+// SW: bottom → left, bulge bot-left, center = (x, y+c)
 function drawCurveSW(ctx, x, y, c) {
-  drawCurve(ctx, x, y, c, x+c, y, Math.PI/2, Math.PI);
+  drawCurve(ctx, x, y, c, x,     y + c, 0,          -Math.PI / 2,   true);
 }
 
 function drawTunnel(ctx, x, y, c) {
   drawStraightH(ctx, x, y, c);
-  // Mountain shape
+  const W = c * W_FRAC;
+  // Mountain
   ctx.fillStyle = '#78909C';
   ctx.beginPath();
-  ctx.moveTo(x, y+c);
-  ctx.lineTo(x, y+c*0.4);
-  ctx.quadraticCurveTo(x+c*0.5, y-c*0.1, x+c, y+c*0.4);
-  ctx.lineTo(x+c, y+c);
+  ctx.moveTo(x, y + c);
+  ctx.lineTo(x, y + c * 0.38);
+  ctx.quadraticCurveTo(x + c * 0.5, y - c * 0.08, x + c, y + c * 0.38);
+  ctx.lineTo(x + c, y + c);
   ctx.fill();
-  // Tunnel mouth
-  ctx.fillStyle = '#212121';
-  ctx.beginPath();
-  ctx.arc(x+c/2, y+c*0.7, c*0.22, Math.PI, 0);
-  ctx.rect(x+c*0.28, y+c*0.7, c*0.44, c*0.3);
-  ctx.fill();
-  // Ground strip
+  // Re-draw track on top of mountain base (so rails are visible)
+  const mid = y + c / 2;
+  ctx.fillStyle = '#BCAAA4';
+  ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
   ctx.fillStyle = '#6D4C41';
-  ctx.fillRect(x, y+c*0.82, c, c*0.05);
-  ctx.fillRect(x, y+c*0.93, c, c*0.05);
+  for (let i = 0.07; i < 1; i += 0.19) {
+    ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
+  }
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
+  // Tunnel mouth
+  ctx.fillStyle = '#1A1A1A';
+  ctx.beginPath();
+  ctx.arc(x + c / 2, mid + W * 1.8, W * 2.2, Math.PI, 0);
+  ctx.rect(x + c / 2 - W * 2.2, mid + W * 1.8, W * 4.4, W * 2.5);
+  ctx.fill();
 }
 
 function drawBridge(ctx, x, y, c) {
-  // Sky/water below
+  const W = c * W_FRAC, mid = y + c * 0.4;
+  drawBed(ctx, x, y, c);
+  // Water
   ctx.fillStyle = '#B3E5FC';
-  ctx.fillRect(x, y, c, c);
+  ctx.fillRect(x, y + c * 0.55, c, c * 0.45);
   // Water ripples
-  ctx.strokeStyle = '#0288D1';
-  ctx.lineWidth = 1.5;
-  for (let wy = y+c*0.75; wy < y+c; wy += c*0.08) {
+  ctx.strokeStyle = '#0288D1'; ctx.lineWidth = 1.5;
+  for (let wy = y + c * 0.65; wy < y + c; wy += c * 0.1) {
     ctx.beginPath();
     ctx.moveTo(x, wy);
-    ctx.quadraticCurveTo(x+c*0.25, wy-4, x+c*0.5, wy);
-    ctx.quadraticCurveTo(x+c*0.75, wy+4, x+c, wy);
+    ctx.quadraticCurveTo(x + c * 0.25, wy - 3, x + c * 0.5, wy);
+    ctx.quadraticCurveTo(x + c * 0.75, wy + 3, x + c, wy);
     ctx.stroke();
   }
   // Pillars
   ctx.fillStyle = '#9E9E9E';
-  ctx.fillRect(x+c*0.12, y+c*0.5, c*0.12, c*0.5);
-  ctx.fillRect(x+c*0.76, y+c*0.5, c*0.12, c*0.5);
+  ctx.fillRect(x + c * 0.1, mid + W * 1.8, c * 0.1, c * 0.5);
+  ctx.fillRect(x + c * 0.8, mid + W * 1.8, c * 0.1, c * 0.5);
   // Arch
-  ctx.strokeStyle = '#757575';
-  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 4;
   ctx.beginPath();
-  ctx.arc(x+c/2, y+c*0.5, c*0.38, Math.PI, 0);
+  ctx.arc(x + c / 2, mid + W * 1.8, c * 0.35, Math.PI, 0);
   ctx.stroke();
-  // Deck (rails on top)
-  const mid = y + c*0.42;
-  ctx.fillStyle = '#8D6E63';
-  ctx.fillRect(x, mid - c*0.06, c, c*0.12);
-  for (let i = 0.15; i < 1; i += 0.22) {
-    ctx.fillStyle = '#5D4037';
-    ctx.fillRect(x + c*i, mid - c*0.12, c*0.08, c*0.24);
+  // Bridge deck ballast + ties + rails (same as straight-h but at mid height)
+  ctx.fillStyle = '#BCAAA4';
+  ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
+  ctx.fillStyle = '#6D4C41';
+  for (let i = 0.07; i < 1; i += 0.19) {
+    ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
   }
-  ctx.strokeStyle = '#616161';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath(); ctx.moveTo(x, mid - c*0.1); ctx.lineTo(x+c, mid - c*0.1); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x, mid + c*0.1); ctx.lineTo(x+c, mid + c*0.1); ctx.stroke();
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 }
 
-// ── Path finding / validation ─────────────────────────────────────
+// ── Connectivity ─────────────────────────────────────────────────────────────
 
 function getConnections(row, col) {
   const cell = getCell(row, col);
-  if (!cell) return [];
-  return TRACK_DEFS[cell.type]?.connects || [];
+  return cell ? (TRACK_DEFS[cell.type]?.connects || []) : [];
 }
-
-function opposite(dir) {
-  return { N:'S', S:'N', E:'W', W:'E' }[dir];
-}
-
+function opposite(dir) { return { N:'S', S:'N', E:'W', W:'E' }[dir]; }
 function neighbor(row, col, dir) {
-  return {
-    N: [row-1, col],
-    S: [row+1, col],
-    E: [row, col+1],
-    W: [row, col-1],
-  }[dir];
+  return { N:[row-1,col], S:[row+1,col], E:[row,col+1], W:[row,col-1] }[dir];
 }
 
-// Returns array of [row,col] reachable from (startRow, startCol) following track connections
-// Also returns whether it forms a complete loop
 function validateTrack() {
-  // Find any track cell to start
-  let startRow = null, startCol = null;
-  for (const r in grid) {
-    for (const c in grid[r]) {
-      if (grid[r][c]) { startRow = parseInt(r); startCol = parseInt(c); break; }
-    }
-    if (startRow !== null) break;
-  }
-  if (startRow === null) return { valid: false, reason: 'empty', path: [] };
-
-  // Count total cells
-  let totalCells = 0;
-  for (const r in grid) for (const c in grid[r]) if (grid[r][c]) totalCells++;
-
-  // BFS/DFS following connections
-  const visited = new Set();
-  const path = [];
-  const key = (r,c) => `${r},${c}`;
-
-  // Walk: follow track connections, build ordered path
-  let cur = [startRow, startCol];
-  let prevDir = null;
-  const maxSteps = totalCells + 2;
-
-  // Try to build ordered path from start
-  // Use DFS that respects connectivity
-  function buildPath(r, c, fromDir, steps) {
-    if (steps > maxSteps * 2) return null;
-    const k = key(r, c);
-    const cell = getCell(r, c);
-    if (!cell) return null;
-    const conns = getConnections(r, c);
-    // Check that the incoming direction matches one of our connections
-    if (fromDir && !conns.includes(opposite(fromDir))) return null;
-
-    if (path.length > 0 && r === startRow && c === startCol) {
-      // Completed the loop!
-      return true;
-    }
-    if (visited.has(k)) return null;
-    visited.add(k);
-    path.push([r, c]);
-
-    for (const dir of conns) {
-      if (dir === opposite(fromDir)) continue; // don't go back
-      const [nr, nc] = neighbor(r, c, dir);
-      const result = buildPath(nr, nc, dir, steps + 1);
-      if (result) return true;
-    }
-    visited.delete(k);
-    path.pop();
-    return null;
-  }
-
-  const conns0 = getConnections(startRow, startCol);
-  let found = false;
-  for (const dir of conns0) {
-    path.length = 0;
-    visited.clear();
-    const result = buildPath(startRow, startCol, null, 0);
-    if (result === true) { found = true; break; }
-    // Try starting by going in one direction
-    path.length = 0;
-    visited.clear();
-    visited.add(key(startRow, startCol));
-    path.push([startRow, startCol]);
-    const [nr, nc] = neighbor(startRow, startCol, dir);
-    const r2 = buildPath(nr, nc, dir, 1);
-    if (r2 === true) { found = true; break; }
-    path.length = 0;
-    visited.clear();
-  }
-
-  if (!found) {
-    // Try simple loop detection
-    const loopPath = findLoop();
-    if (loopPath) return { valid: true, path: loopPath };
-    return { valid: false, reason: 'no-loop', path: [] };
-  }
-  return { valid: true, path };
-}
-
-function findLoop() {
-  // Find all track cells
   const cells = [];
-  for (const r in grid) for (const c in grid[r]) if (grid[r][c]) cells.push([parseInt(r), parseInt(c)]);
-  if (cells.length < 3) return null;
+  for (const r in grid) for (const c in grid[r]) if (grid[r][c]) cells.push([+r, +c]);
+  if (!cells.length) return { valid: false, reason: 'empty', path: null };
 
   const key = (r,c) => `${r},${c}`;
+
+  // Build adjacency: only count edges where BOTH sides connect
   const adj = {};
   for (const [r,c] of cells) {
     adj[key(r,c)] = [];
     for (const dir of getConnections(r,c)) {
-      const [nr, nc] = neighbor(r, c, dir);
-      const nk = key(nr, nc);
-      const ncell = getCell(nr, nc);
-      if (ncell && getConnections(nr, nc).includes(opposite(dir))) {
-        adj[key(r,c)].push([nr, nc, dir]);
-      }
+      const [nr,nc] = neighbor(r,c,dir);
+      if (getCell(nr,nc) && getConnections(nr,nc).includes(opposite(dir)))
+        adj[key(r,c)].push({ r: nr, c: nc, dir });
     }
   }
 
-  // DFS to find loop
+  // DFS from first cell, look for loop
+  const [sr,sc] = cells[0];
   const visited = new Set();
   const path = [];
-  const [sr, sc] = cells[0];
-  const startKey = key(sr, sc);
 
   function dfs(r, c, fromDir) {
-    const k = key(r, c);
-    if (path.length > 1 && r === sr && c === sc) return true; // loop found
+    const k = key(r,c);
+    if (path.length > 1 && r === sr && c === sc) return true; // closed loop
     if (visited.has(k)) return false;
-    visited.add(k);
-    path.push([r, c]);
-    for (const [nr, nc, dir] of (adj[k] || [])) {
-      if (dir === opposite(fromDir)) continue;
-      if (dfs(nr, nc, dir)) return true;
+    visited.add(k); path.push([r,c]);
+    for (const nb of adj[k]) {
+      if (nb.dir === opposite(fromDir)) continue;
+      if (dfs(nb.r, nb.c, nb.dir)) return true;
     }
-    visited.delete(k);
-    path.pop();
+    visited.delete(k); path.pop();
     return false;
   }
 
-  for (const [nr, nc, dir] of (adj[startKey] || [])) {
-    path.length = 0;
-    visited.clear();
-    path.push([sr, sc]);
-    visited.add(startKey);
-    if (dfs(nr, nc, dir)) return [...path];
+  for (const nb of (adj[key(sr,sc)] || [])) {
+    path.length = 0; visited.clear();
+    path.push([sr,sc]); visited.add(key(sr,sc));
+    if (dfs(nb.r, nb.c, nb.dir)) return { valid: true, path: [...path] };
   }
-  return null;
+  return { valid: false, reason: 'no-loop', path: null };
 }
 
-// Build a smooth SVG-like path array for train animation
-// Returns array of {x, y, angle} waypoints in canvas pixels
+// ── Animation path ────────────────────────────────────────────────────────────
+
+// Curve params keyed by [type][entryDir] → {cx_fn, cy_fn, aStart, aEnd, ccw}
+// cx_fn/cy_fn take (px, py, c) → number
+const CURVE_PARAMS = {
+  'curve-ne': {
+    N: { cx:(p,_,c)=>p+c, cy:(_,p,__)=>p,   aS: Math.PI,    aE: Math.PI/2,   ccw: true  },
+    E: { cx:(p,_,c)=>p+c, cy:(_,p,__)=>p,   aS: Math.PI/2,  aE: Math.PI,     ccw: false },
+  },
+  'curve-nw': {
+    N: { cx:(p)=>p,        cy:(_,p)=>p,      aS: 0,          aE: Math.PI/2,   ccw: false },
+    W: { cx:(p)=>p,        cy:(_,p)=>p,      aS: Math.PI/2,  aE: 0,           ccw: true  },
+  },
+  'curve-se': {
+    S: { cx:(p,_,c)=>p+c, cy:(_,p,c)=>p+c,  aS: Math.PI,    aE:-Math.PI/2,   ccw: false },
+    E: { cx:(p,_,c)=>p+c, cy:(_,p,c)=>p+c,  aS:-Math.PI/2,  aE: Math.PI,     ccw: true  },
+  },
+  'curve-sw': {
+    S: { cx:(p)=>p,        cy:(_,p,c)=>p+c,  aS: 0,          aE:-Math.PI/2,   ccw: true  },
+    W: { cx:(p)=>p,        cy:(_,p,c)=>p+c,  aS:-Math.PI/2,  aE: 0,           ccw: false },
+  },
+};
+
+function arcWaypoints(cx, cy, R, aStart, aEnd, ccw, steps, special) {
+  const pts = [];
+  let span = aEnd - aStart;
+  if (ccw)  { if (span > 0)  span -= 2 * Math.PI; }
+  else       { if (span < 0)  span += 2 * Math.PI; }
+  for (let i = 0; i <= steps; i++) {
+    const a = aStart + span * (i / steps);
+    const hx = ccw ? Math.sin(a) : -Math.sin(a);
+    const hy = ccw ? -Math.cos(a) : Math.cos(a);
+    pts.push({ x: cx + R * Math.cos(a), y: cy + R * Math.sin(a),
+               angle: Math.atan2(hy, hx), special: special || null });
+  }
+  return pts;
+}
+
+function getCellDir([r1,c1],[r2,c2]) {
+  if (r2<r1) return 'N'; if (r2>r1) return 'S';
+  if (c2<c1) return 'W'; return 'E';
+}
+
 function buildAnimPath(loopPath, cellSize) {
   const pts = [];
-  const c = cellSize;
+  const c = cellSize, S = 8;
+  const n = loopPath.length;
 
-  for (let i = 0; i < loopPath.length; i++) {
+  for (let i = 0; i < n; i++) {
     const [r, col] = loopPath[i];
     const cell = getCell(r, col);
     if (!cell) continue;
     const type = cell.type;
     const px = col * c, py = r * c;
-    const midX = px + c/2, midY = py + c/2;
+    const entryDir = getCellDir(loopPath[(i - 1 + n) % n], [r, col]);
+    const exitDir  = getCellDir([r, col], loopPath[(i + 1) % n]);
+    const mid = py + c / 2;
+    const sp = (type === 'tunnel') ? 'tunnel' : (type === 'bridge') ? 'bridge' : null;
 
-    const prev = loopPath[(i - 1 + loopPath.length) % loopPath.length];
-    const next = loopPath[(i + 1) % loopPath.length];
-
-    // entry direction (from prev cell to this cell)
-    const entryDir = getCellDirection(prev, [r, col]);
-    // exit direction (from this cell to next cell)
-    const exitDir = getCellDirection([r, col], next);
-
-    const waypoints = getCellWaypoints(type, px, py, c, entryDir, exitDir);
-    pts.push(...waypoints);
-  }
-  return pts;
-}
-
-function getCellDirection([r1,c1], [r2,c2]) {
-  if (r2 < r1) return 'N';
-  if (r2 > r1) return 'S';
-  if (c2 < c1) return 'W';
-  if (c2 > c1) return 'E';
-  return 'E';
-}
-
-function getCellWaypoints(type, px, py, c, entryDir, exitDir) {
-  const pts = [];
-  const steps = 8;
-
-  if (type === 'straight-h' || type === 'tunnel' || type === 'bridge') {
-    const mid = py + c/2;
-    const startX = (entryDir === 'W') ? px : px + c;
-    const endX   = (exitDir  === 'E') ? px + c : px;
-    for (let t = 0; t <= steps; t++) {
-      const x = startX + (endX - startX) * t/steps;
-      pts.push({ x, y: mid, angle: (endX > startX) ? 0 : Math.PI,
-                 special: (type === 'tunnel' && t > 1 && t < steps-1) ? 'tunnel' :
-                          (type === 'bridge' && t > 1 && t < steps-1) ? 'bridge' : null });
-    }
-  } else if (type === 'straight-v') {
-    const mid = px + c/2;
-    const startY = (entryDir === 'N') ? py : py + c;
-    const endY   = (exitDir  === 'S') ? py + c : py;
-    for (let t = 0; t <= steps; t++) {
-      const y = startY + (endY - startY) * t/steps;
-      pts.push({ x: mid, y, angle: (endY > startY) ? Math.PI/2 : -Math.PI/2, special: null });
-    }
-  } else if (type.startsWith('curve-')) {
-    // Determine arc center and angles
-    let cx, cy, r, startAngle, endAngle;
-    const R = c;
-    if (type === 'curve-ne') { cx = px; cy = py+c; r = R; startAngle = -Math.PI/2; endAngle = 0; }
-    else if (type === 'curve-nw') { cx = px+c; cy = py+c; r = R; startAngle = Math.PI; endAngle = -Math.PI/2; }
-    else if (type === 'curve-se') { cx = px; cy = py; r = R; startAngle = 0; endAngle = Math.PI/2; }
-    else { cx = px+c; cy = py; r = R; startAngle = Math.PI/2; endAngle = Math.PI; }
-
-    // Determine direction of traversal
-    let aStart = startAngle, aEnd = endAngle;
-    // Check if we need to reverse
-    const entryPt = { x: cx + r*Math.cos(startAngle), y: cy + r*Math.sin(startAngle) };
-    const exitPt  = { x: cx + r*Math.cos(endAngle),   y: cy + r*Math.sin(endAngle) };
-    // Entry from entryDir means we enter from that side of the cell
-    const entryX = entryDir === 'W' ? px : entryDir === 'E' ? px+c : px+c/2;
-    const entryY = entryDir === 'N' ? py : entryDir === 'S' ? py+c : py+c/2;
-    const d1 = Math.hypot(entryPt.x - entryX, entryPt.y - entryY);
-    const d2 = Math.hypot(exitPt.x  - entryX, exitPt.y  - entryY);
-    if (d1 > d2) { [aStart, aEnd] = [aEnd, aStart]; }
-
-    // Handle angle wrap
-    let diff = aEnd - aStart;
-    if (diff > Math.PI)  diff -= 2*Math.PI;
-    if (diff < -Math.PI) diff += 2*Math.PI;
-
-    for (let t = 0; t <= steps; t++) {
-      const a = aStart + diff * t/steps;
-      const x = cx + r*Math.cos(a);
-      const y = cy + r*Math.sin(a);
-      const angle = a + (diff > 0 ? Math.PI/2 : -Math.PI/2);
-      pts.push({ x, y, angle, special: null });
+    if (type === 'straight-h' || type === 'tunnel' || type === 'bridge') {
+      const goRight = (exitDir === 'E');
+      const trackY  = (type === 'bridge') ? py + c * 0.4 : mid;
+      for (let t = 0; t <= S; t++) {
+        const frac = goRight ? t/S : 1 - t/S;
+        pts.push({ x: px + c*frac, y: trackY, angle: goRight ? 0 : Math.PI, special: sp });
+      }
+    } else if (type === 'straight-v') {
+      const goDown = (exitDir === 'S');
+      for (let t = 0; t <= S; t++) {
+        const frac = goDown ? t/S : 1 - t/S;
+        pts.push({ x: px + c/2, y: py + c*frac, angle: goDown ? Math.PI/2 : -Math.PI/2, special: null });
+      }
+    } else {
+      const cp = CURVE_PARAMS[type]?.[entryDir];
+      if (!cp) continue;
+      const cx = cp.cx(px, py, c);
+      const cy = cp.cy(px, py, c);
+      pts.push(...arcWaypoints(cx, cy, c/2, cp.aS, cp.aE, cp.ccw, S, sp));
     }
   }
   return pts;
