@@ -8,6 +8,18 @@ let isDrawing = false;
 let isRunning = false;
 let gridCanvas, gridCtx;
 
+// ── Weather ────────────────────────────────────────────────────────────────────
+let weatherSky = ['#87CEEB','#B8E4F9']; // default sunny
+let weatherType = 'sunny';
+
+const WEATHER_CONFIGS = {
+  sunny:  { sky: ['#87CEEB','#B8E4F9'], rainChance: 0 },
+  cloudy: { sky: ['#B0BEC5','#CFD8DC'], rainChance: 0 },
+  rainy:  { sky: ['#78909C','#B0BEC5'], rainChance: 1 },
+};
+let rainParticles = [];
+let weatherAnimId = null;
+
 // ── Mode state ────────────────────────────────────────────────────────────────
 let gameMode = 'select';   // 'select' | 'level' | 'free'
 let currentLevelId = null;
@@ -15,6 +27,14 @@ let levelGaps     = [];    // [{r, c, type}] for current level
 let levelPreset   = new Set();  // "r,c" keys that are locked
 let gapFilled     = new Set();  // "r,c" keys of correctly filled gaps
 let completionTimer = null;
+
+// ── Hint system ───────────────────────────────────────────────────────────────
+let hintsRemaining = 0;
+let hintsRevealed  = new Set();   // "r,c" keys whose hint icon has been revealed
+
+function getHintQuota(group) {
+  return [Infinity, 2, 1, 1, 0][group - 1] ?? 0;
+}
 
 // ── Message overlay mode ──────────────────────────────────────────────────────
 let messageMode = 'info';        // 'info' | 'level-complete' | 'confirm'
@@ -89,11 +109,7 @@ window.addEventListener('DOMContentLoaded', () => {
       onLevelCellClick(row, col);
     } else {
       // Free mode
-      if (selectedTool === 'eraser') {
-        setCell(row, col, null);
-      } else {
-        setCell(row, col, selectedTool);
-      }
+      setCell(row, col, selectedTool);
       try { playPlace(); } catch(e) {}
       redrawGrid();
     }
@@ -150,10 +166,58 @@ window.addEventListener('DOMContentLoaded', () => {
     );
   });
 
+  // Hint button
+  document.getElementById('btn-hint').addEventListener('click', () => {
+    if (hintsRemaining <= 0 || gameMode !== 'level') return;
+    const level = getLevelById(currentLevelId);
+    if (!level || level.group === 1) return;
+    const unrevealed = levelGaps.filter(g =>
+      !gapFilled.has(`${g.r},${g.c}`) && !hintsRevealed.has(`${g.r},${g.c}`)
+    );
+    if (!unrevealed.length) return;
+    hintsRevealed.add(`${unrevealed[0].r},${unrevealed[0].c}`);
+    if (hintsRemaining !== Infinity) hintsRemaining--;
+    updateGapOverlay();
+    updateHintBtn();
+  });
+
   // Level select buttons (generated)
   buildLevelSelectUI();
   showLevelSelect();
 });
+
+// ── Hint button update ────────────────────────────────────────────────────────
+function updateHintBtn() {
+  const btn = document.getElementById('btn-hint');
+  if (!btn) return;
+  const level = getLevelById(currentLevelId);
+  if (!level || level.group === 1) { btn.style.display = 'none'; return; }
+  btn.style.display = '';
+  const countEl = btn.querySelector('.hint-count');
+  if (countEl) countEl.textContent = hintsRemaining <= 0 ? '✕' : hintsRemaining;
+  btn.disabled = hintsRemaining <= 0;
+  btn.style.opacity = hintsRemaining <= 0 ? '0.45' : '1';
+}
+
+// ── Toolbar visibility ────────────────────────────────────────────────────────
+function updateToolbarVisibility() {
+  const progress = getLevelProgress();
+  let maxUnlocked = 1;
+  for (const level of LEVELS) {
+    if (isLevelUnlocked(level.id, progress)) maxUnlocked = Math.max(maxUnlocked, level.id);
+  }
+  document.querySelectorAll('.tool-btn[data-unlock-level]').forEach(btn => {
+    const at = parseInt(btn.dataset.unlockLevel, 10);
+    btn.style.display = (maxUnlocked >= at) ? '' : 'none';
+  });
+  // If selected tool is now hidden, switch to straight-h
+  const activeBtn = document.querySelector('.tool-btn.active');
+  if (activeBtn && activeBtn.style.display === 'none') {
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    const fallback = document.querySelector('.tool-btn[data-track="straight-h"]');
+    if (fallback) { fallback.classList.add('active'); selectedTool = 'straight-h'; }
+  }
+}
 
 // ── Level Select UI ───────────────────────────────────────────────────────────
 function buildLevelSelectUI() {
@@ -187,6 +251,7 @@ function buildLevelSelectUI() {
 
     container.appendChild(btn);
   });
+  updateToolbarVisibility();
 }
 
 function refreshLevelSelectUI() {
@@ -262,6 +327,7 @@ function showLevelSelect() {
     isRunning = false;
   }
   if (completionTimer) { clearTimeout(completionTimer); completionTimer = null; }
+  if (weatherAnimId) { cancelAnimationFrame(weatherAnimId); weatherAnimId = null; }
   updateScoreDisplay();
 }
 
@@ -286,16 +352,29 @@ function startFreeMode() {
   document.getElementById('level-select').style.display = 'none';
   document.getElementById('game-screen').style.display = 'flex';
 
-  // Show free-mode header
-  document.getElementById('level-info').innerHTML =
-    '<div id="level-title-display" style="color:#FFD700;font-size:1.2rem;font-weight:bold;text-shadow:1px 1px 4px rgba(0,0,0,0.5)">🎨 自由建造</div>' +
-    '<div id="gaps-counter"></div>';
+  // Show free-mode header (update text without replacing DOM)
+  const titleEl = document.getElementById('level-title-display');
+  if (titleEl) {
+    titleEl.textContent = '🎨 自由建造';
+    titleEl.style.color = '#FFD700';
+    titleEl.style.fontSize = '1.2rem';
+    titleEl.style.fontWeight = 'bold';
+    titleEl.style.textShadow = '1px 1px 4px rgba(0,0,0,0.5)';
+  }
+  const gapsEl = document.getElementById('gaps-counter');
+  if (gapsEl) gapsEl.textContent = '';
+
+  // Hide hint button in free mode
+  const hintBtn = document.getElementById('btn-hint');
+  if (hintBtn) hintBtn.style.display = 'none';
 
   // Show test/clear buttons, hide back button area styling
   document.getElementById('btn-test').style.display = '';
   document.getElementById('btn-stop').style.display = 'none';
   document.getElementById('btn-clear').style.display = '';
   clearGapOverlay();
+
+  updateToolbarVisibility();
 
   // Resize/init
   const area = document.getElementById('main-area');
@@ -310,6 +389,7 @@ function startFreeMode() {
   gc.style.height = tc.style.height = h + 'px';
   initGrid(COLS, ROWS);
   redrawGrid();
+  startWeatherAnim();
 }
 
 function startLevel(id) {
@@ -320,12 +400,19 @@ function startLevel(id) {
   currentLevelId = id;
   isRunning = false;
 
+  updateToolbarVisibility();
+
   // Reset gap tracking
   levelGaps = level.gaps.slice();
   levelPreset.clear();
   gapFilled.clear();
   level.preset.forEach(p => levelPreset.add(`${p.r},${p.c}`));
   levelGaps.forEach(g => levelPreset.add(`${g.r},${g.c}`)); // gaps are also special cells
+
+  // Init hint system
+  const _hq = level.group === 1 ? Infinity : getHintQuota(level.group);
+  hintsRemaining = _hq;
+  hintsRevealed.clear();
 
   document.getElementById('level-select').style.display = 'none';
   document.getElementById('game-screen').style.display = 'flex';
@@ -353,8 +440,11 @@ function startLevel(id) {
 
   initGrid(COLS, ROWS);
   reloadLevelGrid();
+  randomWeather();
   redrawGrid();
   updateGapOverlay();
+  updateHintBtn();
+  startWeatherAnim();
 
   // Show hint desc
   showDesc(level.desc);
@@ -384,16 +474,12 @@ function onLevelCellClick(row, col) {
   const gap = levelGaps.find(g => g.r === row && g.c === col);
   if (!gap) return;
 
-  if (selectedTool === 'eraser') {
-    // Allow erasing a gap cell to reset it
-    if (gapFilled.has(key)) {
-      gapFilled.delete(key);
-      setCell(row, col, null);
-      try { playPlace(); } catch(e) {}
-      redrawGrid();
-      updateGapOverlay();
-      updateGapsCounter();
-    }
+  // Clicking a filled gap with the same tool clears it for re-placement
+  if (gapFilled.has(key) && getCell(row, col)?.type === selectedTool) {
+    gapFilled.delete(key);
+    setCell(row, col, null);
+    try { playPlace(); } catch(e) {}
+    redrawGrid(); updateGapOverlay(); updateGapsCounter(); updateHintBtn();
     return;
   }
 
@@ -446,6 +532,7 @@ function autoCheckLevel() {
   try { setTimeout(startChugSound, 600); } catch(e) {}
   launchStars();
   saveLevelComplete(currentLevelId);
+  updateToolbarVisibility();
 
   // Show completion message after one full lap
   const lapMs = Math.ceil(animPath.length / trainSpeed * (1000 / 60));
@@ -599,7 +686,13 @@ function updateGapOverlay() {
       el = document.createElement('div');
       el.className = 'gap-indicator';
       el.dataset.key = key;
-      el.innerHTML = getGapHintSVG(g.type);
+      const _levelNew = getLevelById(currentLevelId);
+      const _alwaysNew = !_levelNew || _levelNew.group === 1;
+      if (_alwaysNew || hintsRevealed.has(key)) {
+        el.innerHTML = getGapHintSVG(g.type);
+      } else {
+        el.innerHTML = `<span class="gap-question">?</span>`;
+      }
       overlay.appendChild(el);
     }
     // Position (include draw offset so indicator aligns with centred canvas)
@@ -608,12 +701,23 @@ function updateGapOverlay() {
     el.style.width  = cellSize + 'px';
     el.style.height = cellSize + 'px';
 
+    // Always update inner content based on current reveal state
+    const _level = getLevelById(currentLevelId);
+    const _always = !_level || _level.group === 1;
+    const _revealed = _always || hintsRevealed.has(key);
+    if (_revealed) {
+      if (!el.querySelector('svg')) el.innerHTML = getGapHintSVG(g.type);
+    } else {
+      if (!el.querySelector('.gap-question')) el.innerHTML = `<span class="gap-question">?</span>`;
+    }
+
     if (gapFilled.has(key)) {
       el.classList.add('filled');
     } else {
       el.classList.remove('filled');
     }
   });
+  updateHintBtn();
 }
 
 function clearGapOverlay() {
@@ -718,9 +822,33 @@ function redrawGrid() {
   const w = gridCanvas.width, h = gridCanvas.height;
   const c = cellSize;
 
-  // Full-canvas grass background
-  gridCtx.fillStyle = '#81C784';
-  gridCtx.fillRect(0, 0, w, h);
+  // Full-canvas scene background
+  // Sky
+  const skyGrad = gridCtx.createLinearGradient(0, 0, 0, h * 0.45);
+  skyGrad.addColorStop(0, weatherSky[0]);
+  skyGrad.addColorStop(1, weatherSky[1]);
+  gridCtx.fillStyle = skyGrad;
+  gridCtx.fillRect(0, 0, w, h * 0.45);
+  // Ground
+  const groundGrad = gridCtx.createLinearGradient(0, h * 0.45, 0, h);
+  groundGrad.addColorStop(0, '#6DBF67');
+  groundGrad.addColorStop(1, '#4A9E44');
+  gridCtx.fillStyle = groundGrad;
+  gridCtx.fillRect(0, h * 0.45, w, h * 0.55);
+  // Horizon haze
+  const hazeGrad = gridCtx.createLinearGradient(0, h*0.38, 0, h*0.52);
+  hazeGrad.addColorStop(0, 'rgba(135,206,235,0.3)');
+  hazeGrad.addColorStop(1, 'rgba(107,184,103,0)');
+  gridCtx.fillStyle = hazeGrad;
+  gridCtx.fillRect(0, h*0.38, w, h*0.14);
+
+  // Weather effects (clouds, rain)
+  drawWeatherClouds(gridCtx, w, h);
+  updateRain(w, h);
+  drawRain(gridCtx, w, h);
+
+  // Dino decorations
+  drawDinos(gridCtx, w, h);
 
   // Everything else is drawn relative to the centred grid origin
   gridCtx.save();
@@ -861,4 +989,130 @@ function launchStars() {
     document.body.appendChild(star);
     setTimeout(() => star.remove(), 1800);
   }
+}
+
+// ── Weather functions ─────────────────────────────────────────────────────────
+function setWeather(type) {
+  weatherType = type;
+  const cfg = WEATHER_CONFIGS[type] || WEATHER_CONFIGS.sunny;
+  weatherSky = cfg.sky;
+  rainParticles = [];
+}
+
+function randomWeather() {
+  const roll = Math.random();
+  if (roll < 0.6) setWeather('sunny');
+  else if (roll < 0.85) setWeather('cloudy');
+  else setWeather('rainy');
+}
+
+function updateRain(w, h) {
+  if (weatherType !== 'rainy') return;
+  // Spawn new drops
+  while (rainParticles.length < 120) {
+    rainParticles.push({ x: Math.random()*w, y: Math.random()*h*0.4 - h*0.4, speed: 4+Math.random()*5, len: 8+Math.random()*10 });
+  }
+  rainParticles.forEach(p => { p.y += p.speed; p.x -= 0.8; });
+  rainParticles = rainParticles.filter(p => p.y < h);
+}
+
+function drawRain(ctx, w, h) {
+  if (weatherType !== 'rainy') return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(174,214,241,0.55)';
+  ctx.lineWidth = 1.2;
+  rainParticles.forEach(p => {
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x - 1, p.y + p.len);
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawWeatherClouds(ctx, w, h) {
+  const baseY = h * 0.08;
+  const alpha = weatherType === 'sunny' ? 0.85 : 0.7;
+  const clr = weatherType === 'rainy' ? 'rgba(180,180,185,' : 'rgba(255,255,255,';
+  const clouds = [
+    { x: w*0.12, y: baseY,      r: [30,20,24] },
+    { x: w*0.55, y: baseY*0.7,  r: [38,26,30] },
+    { x: w*0.82, y: baseY*1.3,  r: [28,18,22] },
+  ];
+  clouds.forEach(c => {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    c.r.forEach((r, i) => {
+      ctx.fillStyle = clr + (0.7 + i*0.1) + ')';
+      ctx.beginPath();
+      ctx.arc(c.x + (i-1)*r*0.9, c.y, r, 0, Math.PI*2);
+      ctx.fill();
+    });
+    ctx.restore();
+  });
+}
+
+function startWeatherAnim() {
+  if (weatherAnimId) cancelAnimationFrame(weatherAnimId);
+  function loop() {
+    if (weatherType === 'rainy' && gameMode !== 'select') {
+      redrawGrid();
+      weatherAnimId = requestAnimationFrame(loop);
+    } else {
+      weatherAnimId = null;
+    }
+  }
+  if (weatherType === 'rainy') weatherAnimId = requestAnimationFrame(loop);
+}
+
+// ── Dino decorations ──────────────────────────────────────────────────────────
+function drawDinos(ctx, w, h) {
+  // Dino 1: small T-Rex in bottom-left margin, outside grid
+  const s1 = Math.min(w, h) * 0.07;
+  const x1 = drawOffsetX * 0.4, y1 = h - s1 * 1.8;
+  if (drawOffsetX > s1 * 1.5) _drawTRex(ctx, x1, y1, s1, '#5D8A3C');
+
+  // Dino 2: slightly larger in bottom-right margin
+  const s2 = Math.min(w, h) * 0.085;
+  const x2 = w - drawOffsetX * 0.5, y2 = h - s2 * 1.6;
+  if (drawOffsetX > s2 * 1.5) _drawTRex(ctx, x2, y2, s2, '#7A5C2E', true);
+}
+
+function _drawTRex(ctx, cx, baseY, s, color, flip) {
+  ctx.save();
+  if (flip) { ctx.translate(cx*2, 0); ctx.scale(-1, 1); }
+  ctx.fillStyle = color;
+  // Body
+  ctx.beginPath();
+  ctx.ellipse(cx, baseY - s*0.5, s*0.55, s*0.38, -0.1, 0, Math.PI*2);
+  ctx.fill();
+  // Head
+  ctx.beginPath();
+  ctx.ellipse(cx + s*0.55, baseY - s*0.9, s*0.3, s*0.2, 0.3, 0, Math.PI*2);
+  ctx.fill();
+  // Snout
+  ctx.fillRect(cx + s*0.72, baseY - s*0.84, s*0.2, s*0.1);
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(cx - s*0.55, baseY - s*0.5);
+  ctx.lineTo(cx - s*0.95, baseY - s*0.2);
+  ctx.lineTo(cx - s*0.7,  baseY - s*0.45);
+  ctx.closePath(); ctx.fill();
+  // Upper-arm (tiny)
+  ctx.beginPath();
+  ctx.ellipse(cx + s*0.3, baseY - s*0.4, s*0.1, s*0.06, 0.8, 0, Math.PI*2);
+  ctx.fill();
+  // Legs
+  ctx.fillStyle = color;
+  ctx.fillRect(cx - s*0.1, baseY - s*0.15, s*0.14, s*0.55);
+  ctx.fillRect(cx + s*0.15, baseY - s*0.05, s*0.14, s*0.45);
+  // Feet
+  ctx.fillRect(cx - s*0.14, baseY + s*0.38, s*0.22, s*0.07);
+  ctx.fillRect(cx + s*0.12, baseY + s*0.38, s*0.22, s*0.07);
+  // Eye
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.arc(cx + s*0.65, baseY - s*0.95, s*0.055, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.arc(cx + s*0.67, baseY - s*0.95, s*0.03, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
 }
