@@ -1,6 +1,6 @@
 // Main application — supports level-select, challenge levels, and free mode
 
-const COLS = 14, ROWS = 9;
+const COLS = 10, ROWS = 7;
 let cellSize = 60;
 let selectedTool = 'straight-h';
 let isDrawing = false;

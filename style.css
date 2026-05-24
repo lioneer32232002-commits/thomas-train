@@ -69,12 +69,12 @@ body {
 }
 
 .ls-level-btn {
-  width: 58px;
-  height: 58px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   border: 3px solid rgba(255,255,255,0.6);
   background: white;
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   font-weight: bold;
   color: #333;
   cursor: pointer;
@@ -214,18 +214,19 @@ body {
 .tool-btn {
   display: flex; flex-direction: column; align-items: center;
   background: white; border: 3px solid #e0e0e0;
-  border-radius: 12px; padding: 4px 6px;
+  border-radius: 12px; padding: 6px 8px;
   cursor: pointer; transition: all 0.15s;
-  font-size: 0.65rem; font-weight: bold; color: #555;
-  min-width: 56px;
+  font-size: 0.8rem; font-weight: bold; color: #555;
+  min-width: 70px;
 }
+.tool-btn svg { width: 54px; height: 54px; }
 .tool-btn:hover { border-color: #1976D2; transform: scale(1.08); box-shadow: 0 3px 8px rgba(0,0,0,0.2); }
 .tool-btn.active { border-color: #1565C0; background: #E3F2FD; box-shadow: 0 0 0 3px #90CAF9; }
 .tool-btn.special { border-color: #7B1FA2; }
 .tool-btn.special.active { border-color: #7B1FA2; background: #F3E5F5; box-shadow: 0 0 0 3px #CE93D8; }
 .tool-btn.eraser { border-color: #c62828; }
 .tool-btn.eraser.active { border-color: #c62828; background: #FFEBEE; box-shadow: 0 0 0 3px #EF9A9A; }
-.tool-btn span { margin-top: 2px; }
+.tool-btn span { margin-top: 3px; }
 
 #action-btns { display: flex; gap: 8px; margin-left: auto; }
 .action-btn {
