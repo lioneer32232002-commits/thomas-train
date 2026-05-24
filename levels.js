@@ -330,7 +330,7 @@ const LEVELS = [
     gaps: [
       {r:1, c:3, type:'straight-h'},
       {r:1, c:4, type:'tunnel'},
-      {r:4, c:3, type:'straight-h'},
+      {r:4, c:3, type:'crossing'},
     ],
   },
 
@@ -423,7 +423,7 @@ const LEVELS = [
       {r:0, c:3, type:'straight-h'},
       {r:0, c:5, type:'curve-sw'},
       {r:3, c:2, type:'straight-v'},
-      {r:4, c:4, type:'straight-h'},
+      {r:4, c:4, type:'crossing'},
     ],
   },
 
@@ -592,7 +592,7 @@ const LEVELS = [
       {r:1, c:6, type:'straight-h'},
       {r:2, c:7, type:'straight-v'},
       {r:4, c:3, type:'straight-h'},
-      {r:4, c:5, type:'straight-h'},
+      {r:4, c:5, type:'crossing'},
     ],
   },
 

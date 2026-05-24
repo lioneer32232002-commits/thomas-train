@@ -7,15 +7,34 @@ let trainSpeed = 0.6; // waypoints per frame
 let animRunning = false;
 let animFrameId = null;
 let smokeParticles = [];
+let carriageCount = 0;
+let carriageGapWP  = 5;
+
+const CARRIAGE_COLORS      = ['#E53935','#43A047','#F9A825','#FB8C00','#7B1FA2'];
+const CARRIAGE_ROOF_COLORS = ['#B71C1C','#2E7D32','#F57F17','#E65100','#4A148C'];
 
 function initTrainCanvas(canvas) {
   trainCanvas = canvas;
   trainCtx = canvas.getContext('2d');
 }
 
-function startTrain(path) {
+function getCarriageGapWP(path) {
+  if (path.length < 2) return 5;
+  let total = 0;
+  const n = Math.min(path.length, 30);
+  for (let i = 1; i < n; i++) {
+    const dx = path[i].x - path[i-1].x, dy = path[i].y - path[i-1].y;
+    total += Math.sqrt(dx*dx + dy*dy);
+  }
+  const avg = total / (n - 1);
+  return Math.max(3, Math.round(55 / avg));   // ~55 px centre-to-centre
+}
+
+function startTrain(path, numCarriages) {
   animPath = path;
   trainPos = 0;
+  carriageCount = numCarriages || 0;
+  carriageGapWP  = getCarriageGapWP(path);
   animRunning = true;
   smokeParticles = [];
   animLoop();
@@ -81,6 +100,17 @@ function animLoop() {
     trainCtx.fillStyle = '#FFD700';
     trainCtx.fillRect(wp.x - 40, wp.y - 15, 80, 30);
     trainCtx.restore();
+  }
+
+  // Draw carriages (furthest first so Thomas renders on top)
+  for (let ci = carriageCount - 1; ci >= 0; ci--) {
+    const offset = (ci + 1) * carriageGapWP;
+    const carIdx = ((idx - offset) % animPath.length + animPath.length) % animPath.length;
+    const cWp = animPath[carIdx];
+    if (!cWp) continue;
+    if (cWp.special === 'tunnel') trainCtx.globalAlpha = 0.3;
+    drawCarriage(trainCtx, cWp.x, cWp.y, cWp.angle, ci);
+    trainCtx.globalAlpha = 1;
   }
 
   drawThomas(trainCtx, wp.x, wp.y, wp.angle);
@@ -180,6 +210,55 @@ function drawThomas(ctx, x, y, angle) {
   // Front buffer
   ctx.fillStyle = '#FF6F00';
   ctx.fillRect(26, -3, 5, 6);
+
+  ctx.restore();
+}
+
+function drawCarriage(ctx, x, y, angle, idx) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
+  const s = 0.50;
+  ctx.scale(s, s);
+
+  const color     = CARRIAGE_COLORS[idx % CARRIAGE_COLORS.length];
+  const roofColor = CARRIAGE_ROOF_COLORS[idx % CARRIAGE_ROOF_COLORS.length];
+
+  // Body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(-24, -12, 48, 22, 4);
+  ctx.fill();
+
+  // Roof
+  ctx.fillStyle = roofColor;
+  ctx.fillRect(-22, -17, 44, 6);
+
+  // Windows
+  ctx.fillStyle = '#B3E5FC';
+  [-11, 4].forEach(wx => {
+    ctx.fillRect(wx, -9, 9, 7);
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(wx, -9, 9, 7);
+  });
+
+  // Wheels
+  const wheelY = 12;
+  [-12, 12].forEach(wx => {
+    ctx.fillStyle = '#333';
+    ctx.beginPath(); ctx.arc(wx, wheelY, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#757575';
+    ctx.beginPath(); ctx.arc(wx, wheelY, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#FFD700';
+    ctx.beginPath(); ctx.arc(wx, wheelY, 1.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Coupling hooks
+  ctx.fillStyle = '#555';
+  ctx.fillRect(-30, -2, 6, 4);
+  ctx.fillRect(24, -2, 6, 4);
 
   ctx.restore();
 }

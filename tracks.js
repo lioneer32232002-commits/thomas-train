@@ -15,9 +15,10 @@ const TRACK_DEFS = {
   'curve-nw':   { connects: ['N','W'], draw: drawCurveNW },
   'curve-se':   { connects: ['S','E'], draw: drawCurveSE },
   'curve-sw':   { connects: ['S','W'], draw: drawCurveSW },
-  'tunnel':     { connects: ['W','E'], draw: drawTunnel,  special: 'tunnel' },
-  'bridge':     { connects: ['W','E'], draw: drawBridge,  special: 'bridge' },
-  'station':    { connects: ['W','E'], draw: drawStation, special: 'station' },
+  'tunnel':     { connects: ['W','E'], draw: drawTunnel,   special: 'tunnel' },
+  'bridge':     { connects: ['W','E'], draw: drawBridge,   special: 'bridge' },
+  'station':    { connects: ['W','E'], draw: drawStation,  special: 'station' },
+  'crossing':   { connects: ['W','E'], draw: drawCrossing, special: 'crossing' },
 };
 
 let grid = {};
@@ -206,6 +207,52 @@ function drawStation(ctx, x, y, c) {
   ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 }
 
+function drawCrossing(ctx, x, y, c) {
+  const mid = y + c / 2, W = c * W_FRAC;
+  drawBed(ctx, x, y, c);
+
+  // Grey vertical road band
+  ctx.fillStyle = '#78909C';
+  ctx.fillRect(x + c * 0.35, y, c * 0.3, c);
+
+  // Yellow center dashes
+  ctx.fillStyle = '#FFD700';
+  for (let ry = y; ry < y + c; ry += c * 0.2) {
+    ctx.fillRect(x + c * 0.475, ry, c * 0.05, c * 0.09);
+  }
+
+  // Red warning stripes at top and bottom of road band
+  ctx.fillStyle = '#F44336';
+  ctx.fillRect(x + c * 0.35, y,             c * 0.3, c * 0.07);
+  ctx.fillRect(x + c * 0.35, y + c * 0.93,  c * 0.3, c * 0.07);
+
+  // Ballast
+  ctx.fillStyle = '#BCAAA4';
+  ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
+  // Ties
+  ctx.fillStyle = '#6D4C41';
+  for (let i = 0.07; i < 1; i += 0.19) {
+    ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
+  }
+  // Rails
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
+
+  // Warning sign: red circle with white X
+  ctx.fillStyle = '#F44336';
+  ctx.beginPath();
+  ctx.arc(x + c * 0.12, y + c * 0.14, c * 0.09, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${c * 0.12}px Arial`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText('X', x + c * 0.12, y + c * 0.14);
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+}
+
 function drawBridge(ctx, x, y, c) {
   const W = c * W_FRAC, mid = y + c * 0.4;
   drawBed(ctx, x, y, c);
@@ -354,9 +401,9 @@ function buildAnimPath(loopPath, cellSize) {
     const entryDir = getCellDir(loopPath[(i - 1 + n) % n], [r, col]);
     const exitDir  = getCellDir([r, col], loopPath[(i + 1) % n]);
     const mid = py + c / 2;
-    const sp = (type === 'tunnel') ? 'tunnel' : (type === 'bridge') ? 'bridge' : (type === 'station') ? 'station' : null;
+    const sp = (type === 'tunnel') ? 'tunnel' : (type === 'bridge') ? 'bridge' : (type === 'station') ? 'station' : (type === 'crossing') ? 'crossing' : null;
 
-    if (type === 'straight-h' || type === 'tunnel' || type === 'bridge' || type === 'station') {
+    if (type === 'straight-h' || type === 'tunnel' || type === 'bridge' || type === 'station' || type === 'crossing') {
       const goRight = (exitDir === 'E');
       const trackY  = (type === 'bridge') ? py + c * 0.4 : mid;
       for (let t = 0; t <= S; t++) {

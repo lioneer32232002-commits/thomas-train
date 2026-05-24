@@ -442,18 +442,19 @@ function autoCheckLevel() {
   // Level complete!
   try { playSuccess(); } catch(e) {}
   isRunning = true;
-  startTrain(animPath);
+  startTrain(animPath, getLevelCarriageCount(currentLevelId));
   try { setTimeout(startChugSound, 600); } catch(e) {}
   launchStars();
   saveLevelComplete(currentLevelId);
 
-  // Show completion message after 2.5s
+  // Show completion message after one full lap
+  const lapMs = Math.ceil(animPath.length / trainSpeed * (1000 / 60));
   completionTimer = setTimeout(() => {
     stopTrain();
     try { stopChugSound(); } catch(e) {}
     isRunning = false;
     showLevelComplete(currentLevelId);
-  }, 2500);
+  }, lapMs);
 }
 
 function showLevelComplete(levelId) {
@@ -493,6 +494,85 @@ function onNextLevel() {
   startLevel(nextId);
 }
 
+// ── Gap hint SVGs ────────────────────────────────────────────────────────────
+function getGapHintSVG(type) {
+  const svgs = {
+    'straight-h': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="20" width="50" height="10" fill="#BCAAA4"/>
+      <rect x="7" y="20" width="5" height="10" fill="#6D4C41"/>
+      <rect x="19" y="20" width="5" height="10" fill="#6D4C41"/>
+      <rect x="31" y="20" width="5" height="10" fill="#6D4C41"/>
+      <rect x="43" y="20" width="5" height="10" fill="#6D4C41"/>
+      <line x1="0" y1="18" x2="50" y2="18" stroke="#757575" stroke-width="3"/>
+      <line x1="0" y1="32" x2="50" y2="32" stroke="#757575" stroke-width="3"/>
+    </svg>`,
+    'straight-v': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <rect x="20" y="0" width="10" height="50" fill="#BCAAA4"/>
+      <rect x="20" y="7" width="10" height="5" fill="#6D4C41"/>
+      <rect x="20" y="19" width="10" height="5" fill="#6D4C41"/>
+      <rect x="20" y="31" width="10" height="5" fill="#6D4C41"/>
+      <rect x="20" y="43" width="10" height="5" fill="#6D4C41"/>
+      <line x1="18" y1="0" x2="18" y2="50" stroke="#757575" stroke-width="3"/>
+      <line x1="32" y1="0" x2="32" y2="50" stroke="#757575" stroke-width="3"/>
+    </svg>`,
+    'curve-ne': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 25 0 A 25 25 0 0 0 50 25" stroke="#BCAAA4" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <path d="M 31 0 A 19 19 0 0 0 50 19" stroke="#757575" stroke-width="2.5" fill="none"/>
+      <path d="M 19 0 A 31 31 0 0 0 50 31" stroke="#757575" stroke-width="2.5" fill="none"/>
+    </svg>`,
+    'curve-nw': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 25 0 A 25 25 0 0 1 0 25" stroke="#BCAAA4" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <path d="M 19 0 A 19 19 0 0 1 0 19" stroke="#757575" stroke-width="2.5" fill="none"/>
+      <path d="M 31 0 A 31 31 0 0 1 0 31" stroke="#757575" stroke-width="2.5" fill="none"/>
+    </svg>`,
+    'curve-se': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 25 50 A 25 25 0 0 1 50 25" stroke="#BCAAA4" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <path d="M 31 50 A 19 19 0 0 1 50 31" stroke="#757575" stroke-width="2.5" fill="none"/>
+      <path d="M 19 50 A 31 31 0 0 1 50 19" stroke="#757575" stroke-width="2.5" fill="none"/>
+    </svg>`,
+    'curve-sw': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 25 50 A 25 25 0 0 0 0 25" stroke="#BCAAA4" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <path d="M 19 50 A 19 19 0 0 0 0 31" stroke="#757575" stroke-width="2.5" fill="none"/>
+      <path d="M 31 50 A 31 31 0 0 0 0 19" stroke="#757575" stroke-width="2.5" fill="none"/>
+    </svg>`,
+    'tunnel': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="28" width="50" height="22" fill="#BCAAA4"/>
+      <path d="M 3 30 Q 25 4 47 30 Z" fill="#78909C"/>
+      <ellipse cx="25" cy="30" rx="11" ry="8" fill="#1A1A1A"/>
+      <line x1="0" y1="26" x2="50" y2="26" stroke="#757575" stroke-width="3"/>
+      <line x1="0" y1="34" x2="50" y2="34" stroke="#757575" stroke-width="3"/>
+    </svg>`,
+    'bridge': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="30" width="50" height="20" fill="#B3E5FC"/>
+      <rect x="6" y="22" width="8" height="28" fill="#9E9E9E"/>
+      <rect x="36" y="22" width="8" height="28" fill="#9E9E9E"/>
+      <path d="M 10 22 Q 25 6 40 22" stroke="#9E9E9E" stroke-width="3.5" fill="none"/>
+      <rect x="0" y="16" width="50" height="8" fill="#BCAAA4"/>
+      <line x1="0" y1="14" x2="50" y2="14" stroke="#757575" stroke-width="3"/>
+      <line x1="0" y1="26" x2="50" y2="26" stroke="#757575" stroke-width="3"/>
+    </svg>`,
+    'station': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="18" width="30" height="18" fill="#FFF9C4"/>
+      <polygon points="6,18 25,6 44,18" fill="#E53935"/>
+      <rect x="20" y="22" width="10" height="8" fill="#90CAF9"/>
+      <rect x="0" y="33" width="50" height="10" fill="#BCAAA4"/>
+      <line x1="0" y1="31" x2="50" y2="31" stroke="#757575" stroke-width="3"/>
+      <line x1="0" y1="43" x2="50" y2="43" stroke="#757575" stroke-width="3"/>
+    </svg>`,
+    'crossing': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="18" width="50" height="14" fill="#BCAAA4"/>
+      <rect x="18" y="0" width="14" height="50" fill="#78909C"/>
+      <rect x="18" y="0" width="14" height="4" fill="#F44336"/>
+      <rect x="18" y="46" width="14" height="4" fill="#F44336"/>
+      <line x1="24" y1="0" x2="24" y2="18" stroke="#FFD700" stroke-width="2.5" stroke-dasharray="4,4"/>
+      <line x1="24" y1="32" x2="24" y2="50" stroke="#FFD700" stroke-width="2.5" stroke-dasharray="4,4"/>
+      <line x1="0" y1="16" x2="50" y2="16" stroke="#555" stroke-width="2.5"/>
+      <line x1="0" y1="34" x2="50" y2="34" stroke="#555" stroke-width="2.5"/>
+    </svg>`,
+  };
+  return svgs[type] || svgs['straight-h'];
+}
+
 // ── Gap overlay DOM management ────────────────────────────────────────────────
 function updateGapOverlay() {
   const overlay = document.getElementById('gap-overlay');
@@ -519,6 +599,7 @@ function updateGapOverlay() {
       el = document.createElement('div');
       el.className = 'gap-indicator';
       el.dataset.key = key;
+      el.innerHTML = getGapHintSVG(g.type);
       overlay.appendChild(el);
     }
     // Position (include draw offset so indicator aligns with centred canvas)
@@ -582,6 +663,14 @@ function resetProgress() {
   try { localStorage.removeItem('thomas_progress'); } catch(e) {}
   refreshLevelSelectUI();
   updateScoreDisplay();
+}
+
+// ── Carriages ────────────────────────────────────────────────────────────────
+function getLevelCarriageCount(levelId) {
+  const level = getLevelById(levelId);
+  if (!level) return 0;
+  const groupLevels = LEVELS.filter(l => l.group === level.group);
+  return groupLevels.indexOf(level) + 1;  // 1-based position within group
 }
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
