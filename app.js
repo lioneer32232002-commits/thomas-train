@@ -26,11 +26,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const area = document.getElementById('main-area');
     const w = area.clientWidth, h = area.clientHeight;
     cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
-    const cw = cellSize * COLS, ch = cellSize * ROWS;
-    gridCanvas.width  = tCanvas.width  = cw;
-    gridCanvas.height = tCanvas.height = ch;
-    gridCanvas.style.width  = tCanvas.style.width  = cw + 'px';
-    gridCanvas.style.height = tCanvas.style.height = ch + 'px';
+    // Fill the full area — tracks stay in the COLS×ROWS region, rest is green
+    gridCanvas.width  = tCanvas.width  = w;
+    gridCanvas.height = tCanvas.height = h;
+    gridCanvas.style.width  = tCanvas.style.width  = w + 'px';
+    gridCanvas.style.height = tCanvas.style.height = h + 'px';
     initGrid(COLS, ROWS);
     if (gameMode === 'level' && currentLevelId !== null) {
       reloadLevelGrid();
@@ -247,12 +247,11 @@ function startFreeMode() {
   const area = document.getElementById('main-area');
   const w = area.clientWidth, h = area.clientHeight;
   cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
-  const cw = cellSize * COLS, ch = cellSize * ROWS;
   const gc = document.getElementById('grid-canvas');
   const tc = document.getElementById('train-canvas');
-  gc.width = tc.width = cw; gc.height = tc.height = ch;
-  gc.style.width = tc.style.width = cw + 'px';
-  gc.style.height = tc.style.height = ch + 'px';
+  gc.width = tc.width = w; gc.height = tc.height = h;
+  gc.style.width = tc.style.width = w + 'px';
+  gc.style.height = tc.style.height = h + 'px';
   initGrid(COLS, ROWS);
   redrawGrid();
 }
@@ -288,12 +287,11 @@ function startLevel(id) {
   const area = document.getElementById('main-area');
   const w = area.clientWidth, h = area.clientHeight;
   cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
-  const cw = cellSize * COLS, ch = cellSize * ROWS;
   const gc = document.getElementById('grid-canvas');
   const tc = document.getElementById('train-canvas');
-  gc.width = tc.width = cw; gc.height = tc.height = ch;
-  gc.style.width = tc.style.width = cw + 'px';
-  gc.style.height = tc.style.height = ch + 'px';
+  gc.width = tc.width = w; gc.height = tc.height = h;
+  gc.style.width = tc.style.width = w + 'px';
+  gc.style.height = tc.style.height = h + 'px';
 
   initGrid(COLS, ROWS);
   reloadLevelGrid();
@@ -550,13 +548,13 @@ function redrawGrid() {
   gridCtx.fillStyle = '#81C784';
   gridCtx.fillRect(0, 0, w, h);
 
-  // Grid lines
+  // Grid lines — cover full canvas, not just the logical COLS×ROWS region
   gridCtx.strokeStyle = 'rgba(0,100,0,0.15)';
   gridCtx.lineWidth = 1;
-  for (let r = 0; r <= ROWS; r++) {
+  for (let r = 0; r * c <= h; r++) {
     gridCtx.beginPath(); gridCtx.moveTo(0, r*c); gridCtx.lineTo(w, r*c); gridCtx.stroke();
   }
-  for (let col = 0; col <= COLS; col++) {
+  for (let col = 0; col * c <= w; col++) {
     gridCtx.beginPath(); gridCtx.moveTo(col*c, 0); gridCtx.lineTo(col*c, h); gridCtx.stroke();
   }
 
