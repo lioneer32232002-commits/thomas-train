@@ -3,7 +3,7 @@
 let trainCanvas, trainCtx;
 let animPath = [];
 let trainPos = 0;
-let trainSpeed = 0.6; // waypoints per frame
+let trainSpeed = 0.3; // waypoints per frame
 let animRunning = false;
 let animFrameId = null;
 let smokeParticles = [];
@@ -27,7 +27,7 @@ function getCarriageGapWP(path) {
     total += Math.sqrt(dx*dx + dy*dy);
   }
   const avg = total / (n - 1);
-  return Math.max(3, Math.round(55 / avg));   // ~55 px centre-to-centre
+  return Math.max(3, Math.round(90 / avg));   // ~90 px centre-to-centre
 }
 
 function startTrain(path, numCarriages) {
@@ -126,7 +126,7 @@ function drawThomas(ctx, x, y, angle) {
   ctx.translate(x, y);
   ctx.rotate(angle);
 
-  const s = 0.55; // scale
+  const s = 1.0; // scale
   ctx.scale(s, s);
 
   // Body
@@ -219,7 +219,7 @@ function drawCarriage(ctx, x, y, angle, idx) {
   ctx.translate(x, y);
   ctx.rotate(angle);
 
-  const s = 0.50;
+  const s = 0.90;
   ctx.scale(s, s);
 
   const color     = CARRIAGE_COLORS[idx % CARRIAGE_COLORS.length];

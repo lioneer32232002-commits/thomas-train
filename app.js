@@ -73,6 +73,7 @@ window.addEventListener('DOMContentLoaded', () => {
     gridCanvas.style.height = tCanvas.style.height = h + 'px';
     initGrid(COLS, ROWS);
     if (gameMode === 'level' && currentLevelId !== null) {
+      applyLevelCentering(w, h, currentLevelId);
       reloadLevelGrid();
     }
     redrawGrid();
@@ -199,6 +200,22 @@ window.addEventListener('DOMContentLoaded', () => {
   buildLevelSelectUI();
   showLevelSelect();
 });
+
+// ── Level centering ───────────────────────────────────────────────────────────
+function applyLevelCentering(w, h, levelId) {
+  const level = getLevelById(levelId);
+  if (!level) return;
+  const all = [...level.preset, ...level.gaps];
+  if (!all.length) return;
+  const minR = Math.min(...all.map(t => t.r));
+  const maxR = Math.max(...all.map(t => t.r));
+  const minC = Math.min(...all.map(t => t.c));
+  const maxC = Math.max(...all.map(t => t.c));
+  const levelW = (maxC - minC + 1) * cellSize;
+  const levelH = (maxR - minR + 1) * cellSize;
+  drawOffsetX = Math.floor((w - levelW) / 2) - minC * cellSize;
+  drawOffsetY = Math.floor((h - levelH) / 2) - minR * cellSize;
+}
 
 // ── Hint button update ────────────────────────────────────────────────────────
 function updateHintBtn() {
@@ -450,8 +467,7 @@ function startLevel(id) {
   const area = document.getElementById('main-area');
   const w = area.clientWidth, h = area.clientHeight;
   cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
-  drawOffsetX = Math.floor((w - COLS * cellSize) / 2);
-  drawOffsetY = Math.floor((h - ROWS * cellSize) / 2);
+  applyLevelCentering(w, h, id);
   const gc = document.getElementById('grid-canvas');
   const tc = document.getElementById('train-canvas');
   gc.width = tc.width = w; gc.height = tc.height = h;
