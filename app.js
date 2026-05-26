@@ -5,6 +5,8 @@ let cellSize = 60;
 let drawOffsetX = 0, drawOffsetY = 0;   // centres the COLS×ROWS grid in the canvas
 let selectedTool = 'straight-h';
 let isDrawing = false;
+let isDragging = false;
+let isToolbarDragging = false;
 let isRunning = false;
 let gridCanvas, gridCtx;
 
@@ -95,6 +97,32 @@ window.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('touchstart', e => { e.preventDefault(); btn.click(); }, { passive: false });
   });
 
+  // Toolbar drag-to-select
+  function selectToolAt(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return;
+    const btn = el.closest('.tool-btn');
+    if (!btn || btn.disabled || btn.style.display === 'none') return;
+    const track = btn.dataset.track;
+    if (!track || track === selectedTool) return;
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    selectedTool = track;
+  }
+
+  const trackTools = document.getElementById('track-tools');
+  trackTools.addEventListener('touchmove', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    selectToolAt(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+  trackTools.addEventListener('mousedown', () => { isToolbarDragging = true; });
+  document.addEventListener('mousemove', e => {
+    if (!isToolbarDragging) return;
+    selectToolAt(e.clientX, e.clientY);
+  });
+  document.addEventListener('mouseup', () => { isToolbarDragging = false; });
+
   // Canvas interaction
   function getCellFromEvent(e) {
     const rect = gridCanvas.getBoundingClientRect();
@@ -130,13 +158,13 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  gridCanvas.addEventListener('mousedown', e => { isDrawing = true; lastPlaced = null; placeTile(e); });
-  gridCanvas.addEventListener('mousemove', e => { if (isDrawing) placeTile(e); });
-  window.addEventListener('mouseup', () => { isDrawing = false; lastPlaced = null; });
+  gridCanvas.addEventListener('mousedown', e => { isDrawing = true; isDragging = false; lastPlaced = null; placeTile(e); });
+  gridCanvas.addEventListener('mousemove', e => { if (isDrawing) { isDragging = true; placeTile(e); } });
+  window.addEventListener('mouseup', () => { isDrawing = false; isDragging = false; lastPlaced = null; });
 
-  gridCanvas.addEventListener('touchstart', e => { e.preventDefault(); isDrawing = true; lastPlaced = null; placeTile(e); }, { passive: false });
-  gridCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (isDrawing) placeTile(e); }, { passive: false });
-  window.addEventListener('touchend', () => { isDrawing = false; lastPlaced = null; });
+  gridCanvas.addEventListener('touchstart', e => { e.preventDefault(); isDrawing = true; isDragging = false; lastPlaced = null; placeTile(e); }, { passive: false });
+  gridCanvas.addEventListener('touchmove',  e => { e.preventDefault(); if (isDrawing) { isDragging = true; placeTile(e); } }, { passive: false });
+  window.addEventListener('touchend', () => { isDrawing = false; isDragging = false; lastPlaced = null; });
 
   // Buttons
   document.getElementById('btn-test').addEventListener('click', handleTest);
@@ -510,14 +538,16 @@ function onLevelCellClick(row, col) {
   const gap = levelGaps.find(g => g.r === row && g.c === col);
   if (!gap) return;
 
-  // Clicking a filled gap with the same tool clears it for re-placement
-  if (gapFilled.has(key) && getCell(row, col)?.type === selectedTool) {
+  // Single click on a correctly-filled gap with the same tool clears it for re-placement.
+  // During drag we skip the clear so dragging over filled gaps doesn't accidentally undo them.
+  if (!isDragging && gapFilled.has(key) && getCell(row, col)?.type === selectedTool) {
     gapFilled.delete(key);
     setCell(row, col, null);
     try { playPlace(); } catch(e) {}
     redrawGrid(); updateGapOverlay(); updateGapsCounter(); updateHintBtn();
     return;
   }
+  if (isDragging && gapFilled.has(key) && getCell(row, col)?.type === selectedTool) return;
 
   // Place the selected track type
   setCell(row, col, selectedTool);

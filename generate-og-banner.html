@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>Generate OG Banner — 湯瑪士火車樂園</title>
+<style>
+  body { margin: 0; background: #111; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; min-height: 100vh; gap: 16px; }
+  canvas { max-width: 95vw; border: 2px solid #444; border-radius: 4px; }
+  p { color: #aaa; font-family: sans-serif; font-size: 14px; text-align: center; margin: 0; }
+  button { padding: 10px 28px; font-size: 16px; cursor: pointer; border-radius: 8px;
+           background: #1565C0; color: white; border: none; font-family: sans-serif; }
+  button:hover { background: #1976D2; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1200" height="630"></canvas>
+<p>預覽如上。點擊下方按鈕下載 og-banner.png，放入專案根目錄後重新部署。</p>
+<button id="dl">⬇️ 下載 og-banner.png</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 1200, H = 630;
+
+function draw() {
+  // Sky gradient
+  const sky = ctx.createLinearGradient(0, 0, 0, H * 0.68);
+  sky.addColorStop(0,   '#0D47A1');
+  sky.addColorStop(0.4, '#1976D2');
+  sky.addColorStop(1,   '#90CAF9');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H * 0.68);
+
+  // Ground
+  const ground = ctx.createLinearGradient(0, H * 0.68, 0, H);
+  ground.addColorStop(0, '#66BB6A');
+  ground.addColorStop(1, '#2E7D32');
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, H * 0.68, W, H * 0.32);
+
+  // Clouds
+  function cloud(x, y, r) {
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    [[-r*0.75, 0, r*0.7], [0, -r*0.38, r], [r*0.75, 0, r*0.7]].forEach(([dx, dy, rr]) => {
+      ctx.beginPath(); ctx.arc(x + dx, y + dy, rr, 0, Math.PI * 2); ctx.fill();
+    });
+  }
+  cloud(110, 75, 46);
+  cloud(380, 52, 36);
+  cloud(870, 68, 52);
+  cloud(1080, 88, 40);
+
+  // Track (bottom band)
+  const trackY = H * 0.755;
+  ctx.fillStyle = '#BCAAA4';
+  ctx.fillRect(0, trackY - 20, W, 40);
+  ctx.fillStyle = '#6D4C41';
+  for (let tx = 15; tx < W; tx += 88) ctx.fillRect(tx, trackY - 24, 48, 48);
+  ctx.strokeStyle = '#757575'; ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(0, trackY - 11); ctx.lineTo(W, trackY - 11); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, trackY + 11); ctx.lineTo(W, trackY + 11); ctx.stroke();
+
+  // ── Thomas face + train body ──────────────────────────────────────────────
+  const fx = 260, fy = H * 0.37, fs = 210;
+
+  // Chimney
+  ctx.fillStyle = '#1A237E';
+  roundRect(ctx, fx + fs * 0.32, fy - fs * 0.68, fs * 0.14, fs * 0.38, 4); ctx.fill();
+  ctx.fillStyle = '#283593';
+  roundRect(ctx, fx + fs * 0.28, fy - fs * 0.72, fs * 0.22, fs * 0.1, 4); ctx.fill();
+
+  // Head box
+  ctx.fillStyle = '#1565C0';
+  roundRect(ctx, fx - fs * 0.5, fy - fs * 0.44, fs, fs * 0.88, fs * 0.11); ctx.fill();
+  ctx.fillStyle = '#1976D2';
+  roundRect(ctx, fx - fs * 0.43, fy - fs * 0.37, fs * 0.86, fs * 0.54, fs * 0.07); ctx.fill();
+
+  // Eyes white
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.ellipse(fx - fs * 0.19, fy - fs * 0.06, fs * 0.145, fs * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(fx + fs * 0.19, fy - fs * 0.06, fs * 0.145, fs * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+  // Pupils
+  ctx.fillStyle = '#1565C0';
+  ctx.beginPath(); ctx.ellipse(fx - fs * 0.16, fy - fs * 0.06, fs * 0.088, fs * 0.108, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(fx + fs * 0.22, fy - fs * 0.06, fs * 0.088, fs * 0.108, 0, 0, Math.PI * 2); ctx.fill();
+  // Highlights
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.arc(fx - fs * 0.13, fy - fs * 0.095, fs * 0.032, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(fx + fs * 0.25, fy - fs * 0.095, fs * 0.032, 0, Math.PI * 2); ctx.fill();
+
+  // Smile
+  ctx.strokeStyle = '#FF8F00'; ctx.lineWidth = fs * 0.048; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(fx - fs * 0.25, fy + fs * 0.2);
+  ctx.quadraticCurveTo(fx, fy + fs * 0.33, fx + fs * 0.25, fy + fs * 0.2);
+  ctx.stroke();
+  // Nose
+  ctx.fillStyle = '#FF8F00';
+  ctx.beginPath(); ctx.ellipse(fx, fy + fs * 0.1, fs * 0.044, fs * 0.03, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Train body below head
+  const bodyY = fy + fs * 0.45;
+  ctx.fillStyle = '#1565C0';
+  roundRect(ctx, fx - fs * 0.6, bodyY, fs * 1.2, fs * 0.42, 14); ctx.fill();
+  ctx.fillStyle = '#0D47A1';
+  ctx.fillRect(fx - fs * 0.6, bodyY + fs * 0.34, fs * 1.2, fs * 0.08);
+  // Windows
+  ctx.fillStyle = '#90CAF9';
+  roundRect(ctx, fx - fs * 0.42, bodyY + fs * 0.06, fs * 0.28, fs * 0.2, 6); ctx.fill();
+  roundRect(ctx, fx + fs * 0.14, bodyY + fs * 0.06, fs * 0.28, fs * 0.2, 6); ctx.fill();
+  ctx.strokeStyle = '#0D47A1'; ctx.lineWidth = 2.5;
+  ctx.strokeRect(fx - fs * 0.42, bodyY + fs * 0.06, fs * 0.28, fs * 0.2);
+  ctx.strokeRect(fx + fs * 0.14, bodyY + fs * 0.06, fs * 0.28, fs * 0.2);
+  // Wheels
+  [fx - fs*0.38, fx - fs*0.1, fx + fs*0.18, fx + fs*0.42].forEach(wx => {
+    ctx.fillStyle = '#37474F';
+    ctx.beginPath(); ctx.arc(wx, bodyY + fs * 0.48, fs * 0.13, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#546E7A';
+    ctx.beginPath(); ctx.arc(wx, bodyY + fs * 0.48, fs * 0.08, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#B0BEC5';
+    ctx.beginPath(); ctx.arc(wx, bodyY + fs * 0.48, fs * 0.025, 0, Math.PI * 2); ctx.fill();
+  });
+  // Bumper
+  ctx.fillStyle = '#E53935';
+  roundRect(ctx, fx + fs * 0.57, bodyY + fs * 0.14, fs * 0.085, fs * 0.14, 4); ctx.fill();
+
+  // ── Title text ─────────────────────────────────────────────────────────────
+  ctx.textBaseline = 'alphabetic';
+
+  // Shadow layer
+  ctx.font = 'bold 88px "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif';
+  ctx.fillStyle = 'rgba(0,20,80,0.55)';
+  ctx.fillText('湯瑪士火車樂園', 548, H * 0.37 + 5);
+  // Main title
+  ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(0,30,100,0.6)';
+  ctx.shadowBlur = 18; ctx.shadowOffsetY = 5;
+  ctx.fillText('湯瑪士火車樂園', 545, H * 0.37);
+  ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+
+  // Train emoji next to title
+  ctx.font = '76px serif';
+  ctx.fillText('🚂', 1095, H * 0.37);
+
+  // Subtitle
+  ctx.font = 'bold 44px "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", sans-serif';
+  ctx.fillStyle = '#FFF9C4';
+  ctx.shadowColor = 'rgba(0,20,60,0.5)'; ctx.shadowBlur = 10;
+  ctx.fillText('幫湯瑪士鋪好鐵軌，讓他出發！', 545, H * 0.52);
+  ctx.shadowBlur = 0;
+
+  // Star row
+  ctx.font = '42px serif';
+  ctx.fillText('⭐  🌟  ✨  🌟  ⭐', 545, H * 0.62);
+
+  // Bottom badge
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  roundRect(ctx, 545, H * 0.82, 580, 44, 22); ctx.fill();
+  ctx.font = 'bold 22px "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText('🧒 適合 2-6 歲寶貝  ·  免費遊玩  ·  無需安裝', 558, H * 0.855);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+draw();
+
+document.getElementById('dl').addEventListener('click', () => {
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'og-banner.png';
+    a.click();
+  }, 'image/png');
+});
+</script>
+</body>
+</html>
