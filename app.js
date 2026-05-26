@@ -699,7 +699,7 @@ function showLevelComplete(levelId) {
 
   document.getElementById('message-close').textContent = 'Back to Levels';
   const nextBtn = document.getElementById('message-next');
-  nextBtn.textContent = '下一關 →';
+  nextBtn.textContent = 'Next Level →';
   if (hasNext && isLevelUnlocked(nextId, getLevelProgress())) {
     nextBtn.style.display = '';
     nextBtn.dataset.nextId = nextId;
