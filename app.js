@@ -266,8 +266,8 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-reset').addEventListener('click', () => {
     showConfirm(
       '⚠️',
-      '確定要重置所有進度嗎？\n所有關卡和分數都會清除！',
-      '確定重置', '取消',
+      'Reset all progress?\nAll levels and scores will be cleared!',
+      'Reset', 'Cancel',
       () => {
         resetProgress();
       }
@@ -479,7 +479,7 @@ function startFreeMode() {
   // Show free-mode header (update text without replacing DOM)
   const titleEl = document.getElementById('level-title-display');
   if (titleEl) {
-    titleEl.textContent = '🎨 自由建造';
+    titleEl.textContent = '🎨 Free Build';
     titleEl.style.color = '#FFD700';
     titleEl.style.fontSize = '1.2rem';
     titleEl.style.fontWeight = 'bold';
@@ -695,9 +695,9 @@ function showLevelComplete(levelId) {
 
   document.getElementById('message-icon').textContent = '🎉';
   document.getElementById('message-text').textContent =
-    `第 ${levelId} 關完成！🚂\n獲得 +${earned} 分！⭐\n總分：${totalScore} / ${maxScore}`;
+    `Level ${levelId} Complete! 🚂\n+${earned} pts! ⭐\nTotal: ${totalScore} / ${maxScore}`;
 
-  document.getElementById('message-close').textContent = '返回選關';
+  document.getElementById('message-close').textContent = 'Back to Levels';
   const nextBtn = document.getElementById('message-next');
   nextBtn.textContent = '下一關 →';
   if (hasNext && isLevelUnlocked(nextId, getLevelProgress())) {
@@ -875,9 +875,9 @@ function updateGapsCounter() {
   const el = document.getElementById('gaps-counter');
   if (!el) return;
   if (remaining === 0) {
-    el.textContent = '✅ 完成！';
+    el.textContent = '✅ Done!';
   } else {
-    el.textContent = `還差 ${remaining} 條軌道`;
+    el.textContent = `${remaining} track${remaining > 1 ? 's' : ''} to go`;
   }
 }
 
@@ -931,7 +931,7 @@ function getMaxScore() {
 
 function updateScoreDisplay() {
   const el = document.getElementById('ls-score');
-  if (el) el.textContent = `⭐ ${getScore()} / ${getMaxScore()} 分`;
+  if (el) el.textContent = `⭐ ${getScore()} / ${getMaxScore()} pts`;
 }
 
 // ── Hint desc (dismisses on click) ───────────────────────────────────────────
@@ -1044,9 +1044,9 @@ function handleTest() {
   if (!result.valid) {
     let msg = '';
     if (result.reason === 'empty') {
-      msg = '還沒有鐵軌！\n先放一些鐵軌吧！🎉';
+      msg = 'No tracks yet!\nPlace some tracks first! 🎉';
     } else {
-      msg = '鐵軌還沒有連成一個圈圈！\n找找看有沒有缺口？🔍';
+      msg = 'Tracks not connected yet!\nLook for any gaps! 🔍';
     }
     try { playError(); } catch(e) {}
     showMessage('😅', msg, false);
@@ -1056,14 +1056,14 @@ function handleTest() {
   const loopPath = result.path;
   if (!loopPath || loopPath.length < 2) {
     try { playError(); } catch(e) {}
-    showMessage('🤔', '鐵軌太短了！\n多放幾條鐵軌再試試！', false);
+    showMessage('🤔', 'Loop too short!\nAdd more tracks and try again!', false);
     return;
   }
 
   const animPath = buildAnimPath(loopPath, cellSize);
   if (!animPath || animPath.length < 4) {
     try { playError(); } catch(e) {}
-    showMessage('🤔', '鐵軌好像有問題，\n再試試看？', false);
+    showMessage('🤔', 'Something looks off with the tracks.\nGive it another try!', false);
     return;
   }
   animPath.forEach(wp => { wp.x += drawOffsetX; wp.y += drawOffsetY; });
@@ -1109,10 +1109,10 @@ function showConfirm(icon, text, confirmLabel, cancelLabel, action) {
   pendingConfirmAction = action;
   document.getElementById('message-icon').textContent = icon;
   document.getElementById('message-text').textContent = text;
-  document.getElementById('message-close').textContent = cancelLabel || '取消';
+  document.getElementById('message-close').textContent = cancelLabel || 'Cancel';
   const nextBtn = document.getElementById('message-next');
   nextBtn.style.display = '';
-  nextBtn.textContent = confirmLabel || '確定';
+  nextBtn.textContent = confirmLabel || 'Confirm';
   nextBtn.dataset.nextId = '';
   document.getElementById('message-overlay').style.display = 'flex';
 }

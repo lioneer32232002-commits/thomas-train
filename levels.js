@@ -7,8 +7,8 @@ const LEVELS = [
   {
     id: 1,
     group: 1,
-    title: '第 1 關',
-    desc: '找找看少了哪條橫軌！',
+    title: 'Level 1',
+    desc: 'Find the missing horizontal track!',
     preset: [
       {r:1, c:1, type:'curve-se'},
       {r:1, c:2, type:'straight-h'},
@@ -32,8 +32,8 @@ const LEVELS = [
   {
     id: 2,
     group: 1,
-    title: '第 2 關',
-    desc: '右邊少了一條直軌！',
+    title: 'Level 2',
+    desc: 'A vertical track is missing on the right!',
     preset: [
       {r:1, c:2, type:'curve-se'},
       {r:1, c:3, type:'straight-h'},
@@ -53,8 +53,8 @@ const LEVELS = [
   {
     id: 3,
     group: 1,
-    title: '第 3 關',
-    desc: '左下角少了一個彎道！',
+    title: 'Level 3',
+    desc: 'A curve is missing in the bottom-left!',
     preset: [
       {r:1, c:2, type:'curve-se'},
       {r:1, c:3, type:'straight-h'},
@@ -72,8 +72,8 @@ const LEVELS = [
   {
     id: 4,
     group: 1,
-    title: '第 4 關',
-    desc: '右上角少了一個彎道！',
+    title: 'Level 4',
+    desc: 'A curve is missing in the top-right!',
     preset: [
       {r:1, c:2, type:'curve-se'},
       {r:1, c:3, type:'straight-h'},
@@ -91,8 +91,8 @@ const LEVELS = [
   {
     id: 5,
     group: 1,
-    title: '第 5 關',
-    desc: '橋梁不見了！',
+    title: 'Level 5',
+    desc: 'The bridge has gone missing!',
     preset: [
       {r:1, c:1, type:'curve-se'},
       {r:1, c:2, type:'straight-h'},
@@ -115,8 +115,8 @@ const LEVELS = [
   {
     id: 6,
     group: 2,
-    title: '第 6 關',
-    desc: '上方少了兩條橫軌！',
+    title: 'Level 6',
+    desc: 'Two horizontal tracks missing at the top!',
     preset: [
       {r:1, c:1, type:'curve-se'},
       {r:1, c:4, type:'straight-h'},
@@ -138,8 +138,8 @@ const LEVELS = [
   {
     id: 7,
     group: 2,
-    title: '第 7 關',
-    desc: '左右各少了一條直軌！',
+    title: 'Level 7',
+    desc: 'One vertical track missing on each side!',
     preset: [
       {r:1, c:3, type:'curve-se'},
       {r:1, c:4, type:'straight-h'},
@@ -157,8 +157,8 @@ const LEVELS = [
   {
     id: 8,
     group: 2,
-    title: '第 8 關',
-    desc: '上下各少了一條橫軌！',
+    title: 'Level 8',
+    desc: 'One horizontal track missing top and bottom!',
     preset: [
       {r:1, c:2, type:'curve-se'},
       {r:1, c:3, type:'straight-h'},
@@ -180,8 +180,8 @@ const LEVELS = [
   {
     id: 9,
     group: 2,
-    title: '第 9 關',
-    desc: '找找看少了哪兩段軌道！',
+    title: 'Level 9',
+    desc: 'Find the two missing tracks!',
     preset: [
       {r:1, c:2, type:'straight-h'},
       {r:1, c:3, type:'straight-h'},
@@ -201,8 +201,8 @@ const LEVELS = [
   {
     id: 10,
     group: 2,
-    title: '第 10 關',
-    desc: '兩個彎道不見了，你找得到嗎？',
+    title: 'Level 10',
+    desc: 'Two curves have gone missing — can you find them?',
     preset: [
       {r:1, c:2, type:'curve-se'},
       {r:1, c:3, type:'straight-h'},
@@ -226,8 +226,8 @@ const LEVELS = [
   {
     id: 11,
     group: 3,
-    title: '第 11 關',
-    desc: '大橢圓，三個缺口在哪裡？',
+    title: 'Level 11',
+    desc: 'Big oval — where are the three gaps?',
     preset: [
       {r:1, c:0, type:'curve-se'},
       {r:1, c:1, type:'straight-h'},
@@ -259,8 +259,8 @@ const LEVELS = [
   {
     id: 12,
     group: 3,
-    title: '第 12 關',
-    desc: '彎道找得到嗎？三個缺口！',
+    title: 'Level 12',
+    desc: 'Can you spot the curves? Three gaps!',
     preset: [
       {r:1, c:3, type:'straight-h'},
       {r:1, c:4, type:'straight-h'},
@@ -285,8 +285,8 @@ const LEVELS = [
   {
     id: 13,
     group: 3,
-    title: '第 13 關',
-    desc: '火車站出現了！找找缺口在哪！',
+    title: 'Level 13',
+    desc: 'A station appeared! Find those gaps!',
     preset: [
       {r:1, c:1, type:'curve-se'},
       {r:1, c:3, type:'station'},
@@ -314,8 +314,8 @@ const LEVELS = [
   {
     id: 14,
     group: 3,
-    title: '第 14 關',
-    desc: '山洞在哪裡？三個缺口！',
+    title: 'Level 14',
+    desc: 'Where is the tunnel? Three gaps!',
     preset: [
       {r:1, c:2, type:'curve-se'},
       {r:1, c:5, type:'curve-sw'},
@@ -342,8 +342,8 @@ const LEVELS = [
   {
     id: 15,
     group: 3,
-    title: '第 15 關',
-    desc: '橫的直的都有缺口，加油！',
+    title: 'Level 15',
+    desc: 'Gaps in every direction — keep going!',
     preset: [
       {r:0, c:1, type:'curve-se'},
       {r:0, c:2, type:'straight-h'},
@@ -372,8 +372,8 @@ const LEVELS = [
   {
     id: 16,
     group: 4,
-    title: '第 16 關',
-    desc: '大橢圓四個缺口，找到全部！',
+    title: 'Level 16',
+    desc: 'Big oval, four gaps — find them all!',
     preset: [
       {r:1, c:0, type:'curve-se'},
       {r:1, c:2, type:'straight-h'},
@@ -405,8 +405,8 @@ const LEVELS = [
   {
     id: 17,
     group: 4,
-    title: '第 17 關',
-    desc: '高高的長方形，四個缺口！',
+    title: 'Level 17',
+    desc: 'Tall rectangle, four gaps!',
     preset: [
       {r:0, c:2, type:'curve-se'},
       {r:0, c:4, type:'straight-h'},
@@ -435,8 +435,8 @@ const LEVELS = [
   {
     id: 18,
     group: 4,
-    title: '第 18 關',
-    desc: '火車站旁邊有四個缺口！',
+    title: 'Level 18',
+    desc: 'Four gaps around the station!',
     preset: [
       {r:1, c:1, type:'curve-se'},
       {r:1, c:3, type:'station'},
@@ -467,8 +467,8 @@ const LEVELS = [
   {
     id: 19,
     group: 4,
-    title: '第 19 關',
-    desc: '四個角都不見了！考驗彎道！',
+    title: 'Level 19',
+    desc: 'All four corners are missing — curve challenge!',
     preset: [
       {r:1, c:2, type:'straight-h'},
       {r:1, c:3, type:'straight-h'},
@@ -499,8 +499,8 @@ const LEVELS = [
   {
     id: 20,
     group: 4,
-    title: '第 20 關',
-    desc: '彎道加直軌，四個缺口！',
+    title: 'Level 20',
+    desc: 'Curves and straights — four gaps!',
     preset: [
       {r:0, c:2, type:'curve-se'},
       {r:0, c:3, type:'straight-h'},
@@ -530,8 +530,8 @@ const LEVELS = [
   {
     id: 21,
     group: 5,
-    title: '第 21 關',
-    desc: '整個大圈圈！五個缺口在哪裡？',
+    title: 'Level 21',
+    desc: 'The whole outer ring! Five gaps to find!',
     preset: [
       {r:0, c:0, type:'curve-se'},
       {r:0, c:1, type:'straight-h'},
@@ -568,8 +568,8 @@ const LEVELS = [
   {
     id: 22,
     group: 5,
-    title: '第 22 關',
-    desc: '橋梁加火車站！五個缺口超難！',
+    title: 'Level 22',
+    desc: 'Bridge and station — five tough gaps!',
     preset: [
       {r:1, c:0, type:'curve-se'},
       {r:1, c:1, type:'straight-h'},
@@ -604,8 +604,8 @@ const LEVELS = [
   {
     id: 23,
     group: 5,
-    title: '第 23 關',
-    desc: '四個彎道加一條直軌，找到了嗎？',
+    title: 'Level 23',
+    desc: 'Four curves plus a straight — got them all?',
     preset: [
       {r:0, c:2, type:'straight-h'},
       {r:0, c:4, type:'straight-h'},
@@ -636,8 +636,8 @@ const LEVELS = [
   {
     id: 24,
     group: 5,
-    title: '第 24 關',
-    desc: '超大圓圈，五個缺口各不同！',
+    title: 'Level 24',
+    desc: 'Huge ring, five different gaps!',
     preset: [
       {r:0, c:0, type:'curve-se'},
       {r:0, c:1, type:'straight-h'},
@@ -672,8 +672,8 @@ const LEVELS = [
   {
     id: 25,
     group: 5,
-    title: '第 25 關',
-    desc: '最終關卡！四個彎道加一條直軌！',
+    title: 'Level 25',
+    desc: 'Final level! Four curves plus a straight!',
     preset: [
       {r:0, c:1, type:'straight-h'},
       {r:0, c:2, type:'straight-h'},
