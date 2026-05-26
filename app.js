@@ -7,6 +7,7 @@ let selectedTool = 'straight-h';
 let isDrawing = false;
 let isDragging = false;
 let isToolbarDragging = false;
+let toolbarGhostEl = null;
 let isRunning = false;
 let gridCanvas, gridCtx;
 
@@ -97,7 +98,7 @@ window.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('touchstart', e => { e.preventDefault(); btn.click(); }, { passive: false });
   });
 
-  // Toolbar drag-to-select
+  // Toolbar drag-to-select AND drag-and-drop onto canvas
   function selectToolAt(x, y) {
     const el = document.elementFromPoint(x, y);
     if (!el) return;
@@ -108,20 +109,84 @@ window.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     selectedTool = track;
+    if (toolbarGhostEl) toolbarGhostEl.innerHTML = btn.innerHTML;
+  }
+
+  function startToolbarDrag(btn, x, y) {
+    isToolbarDragging = true;
+    if (toolbarGhostEl) toolbarGhostEl.remove();
+    toolbarGhostEl = document.createElement('div');
+    toolbarGhostEl.className = 'track-ghost';
+    toolbarGhostEl.innerHTML = btn.innerHTML;
+    document.body.appendChild(toolbarGhostEl);
+    toolbarGhostEl.style.left = (x - 26) + 'px';
+    toolbarGhostEl.style.top  = (y - 26) + 'px';
+  }
+
+  function moveToolbarGhost(x, y) {
+    if (!toolbarGhostEl) return;
+    toolbarGhostEl.style.left = (x - 26) + 'px';
+    toolbarGhostEl.style.top  = (y - 26) + 'px';
+  }
+
+  function endToolbarDrag(x, y) {
+    isToolbarDragging = false;
+    if (toolbarGhostEl) { toolbarGhostEl.remove(); toolbarGhostEl = null; }
+    const rect = gridCanvas.getBoundingClientRect();
+    if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+      isDragging = true;   // treat drop as drag (don't clear filled cell)
+      lastPlaced = null;
+      placeTile({ clientX: x, clientY: y });
+      isDragging = false;
+    }
   }
 
   const trackTools = document.getElementById('track-tools');
+
+  // Touch: press on a toolbar button → start drag
+  trackTools.addEventListener('touchstart', e => {
+    const btn = e.target.closest('.tool-btn');
+    if (!btn) return;
+    // individual btn handler already called btn.click() to select — just start ghost
+    startToolbarDrag(btn, e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+
+  // Touch: drag across toolbar or onto canvas
   trackTools.addEventListener('touchmove', e => {
+    if (!isToolbarDragging) return;
     e.preventDefault();
     e.stopPropagation();
-    selectToolAt(e.touches[0].clientX, e.touches[0].clientY);
+    const t = e.touches[0];
+    moveToolbarGhost(t.clientX, t.clientY);
+    selectToolAt(t.clientX, t.clientY);
   }, { passive: false });
-  trackTools.addEventListener('mousedown', () => { isToolbarDragging = true; });
+
+  // Touch: release — drop on canvas if over it
+  document.addEventListener('touchend', e => {
+    if (!isToolbarDragging) return;
+    const t = e.changedTouches[0];
+    endToolbarDrag(t.clientX, t.clientY);
+  });
+
+  // Mouse: press on toolbar button → start drag
+  trackTools.addEventListener('mousedown', e => {
+    const btn = e.target.closest('.tool-btn');
+    if (!btn) return;
+    startToolbarDrag(btn, e.clientX, e.clientY);
+  });
+
+  // Mouse: drag
   document.addEventListener('mousemove', e => {
     if (!isToolbarDragging) return;
+    moveToolbarGhost(e.clientX, e.clientY);
     selectToolAt(e.clientX, e.clientY);
   });
-  document.addEventListener('mouseup', () => { isToolbarDragging = false; });
+
+  // Mouse: release — drop on canvas if over it
+  document.addEventListener('mouseup', e => {
+    if (!isToolbarDragging) return;
+    endToolbarDrag(e.clientX, e.clientY);
+  });
 
   // Canvas interaction
   function getCellFromEvent(e) {

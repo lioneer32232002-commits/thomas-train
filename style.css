@@ -1,5 +1,24 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Toolbar drag-and-drop ghost */
+.track-ghost {
+  position: fixed;
+  width: 52px;
+  height: 52px;
+  pointer-events: none;
+  z-index: 9999;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2.5px solid #1976D2;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  transform: scale(1.15) rotate(-6deg);
+}
+.track-ghost svg { width: 100%; height: 100%; }
+
 body {
   font-family: 'Nunito', 'Arial Rounded MT Bold', Arial, sans-serif;
   background: linear-gradient(180deg, #87CEEB 0%, #98FB98 60%, #90EE90 100%);
