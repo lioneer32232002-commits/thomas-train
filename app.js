@@ -35,7 +35,7 @@ let completionTimer = null;
 let dinoEventTriggered = false;
 let dinoRunning        = false;
 let dinoPos            = 0;
-const DINO_SPEED       = 0.10;
+const DINO_SPEED       = 0.28;
 
 let dinoPath      = [];
 let dinoLoop_path = [];
@@ -44,6 +44,25 @@ let dinoStomps  = [];
 let brokenCells = new Set();
 
 let dinoAnimId  = null;
+let _dinoWalkerImg = null;
+function _getDinoImg() {
+  if (!_dinoWalkerImg) {
+    _dinoWalkerImg = new Image();
+    _dinoWalkerImg.src = 'dino-walker.png';
+  }
+  return _dinoWalkerImg;
+}
+
+// ── Dino species ───────────────────────────────────────────────────────────────
+// Each has a blocky draw(ctx, S, attack, swing) renderer (drawn in an upright,
+// already-flipped local frame; +x is forward, feet sit a little below origin).
+let currentDino = null;
+const DINO_TYPES = [
+  { key:'trex',    name:'A T-Rex',         emoji:'🦖', warn:'A wild T-Rex appeared!',        draw:_drawDinoTRex },
+  { key:'tricera', name:'A Triceratops',   emoji:'🦏', warn:'A Triceratops is charging!',    draw:_drawDinoTricera },
+  { key:'bronto',  name:'A Brontosaurus',  emoji:'🦕', warn:'A giant Brontosaurus stomped by!', draw:_drawDinoBronto },
+  { key:'ptero',   name:'A Pterodactyl',   emoji:'🦅', warn:'A Pterodactyl is dive-bombing!', draw:_drawDinoPtero },
+];
 
 // ── Hint system ───────────────────────────────────────────────────────────────
 let hintsRemaining = 0;
@@ -240,12 +259,17 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('message-close').addEventListener('click', () => {
     document.getElementById('message-overlay').style.display = 'none';
     if (messageMode === 'confirm') {
-      // "取消" — just dismiss, do nothing
+      // Cancel — just dismiss, do nothing
       messageMode = 'info';
       pendingConfirmAction = null;
       return;
     }
-    // In level mode "返回選關" goes back to level select
+    if (messageMode === 'dino-repair') {
+      // Stay in level so player can fix the broken tracks
+      messageMode = 'info';
+      return;
+    }
+    // In level mode go back to level select
     if (gameMode === 'level') {
       exitToSelect();
     }
@@ -291,7 +315,24 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Level select buttons (generated)
   buildLevelSelectUI();
-  showLevelSelect();
+
+  // ── Profile select 事件 ────────────────────────────────────────────────────
+  document.getElementById('ps-add-btn').addEventListener('click', () => {
+    showNameDialog((name, avatar) => {
+      createProfile(name, avatar);
+      // 直接進入關卡選擇
+      refreshLevelSelectUI();
+      showLevelSelect();
+    });
+  });
+
+  // 切換玩家按鈕（關卡選單左上）
+  document.getElementById('ls-switch-btn').addEventListener('click', () => {
+    showProfileSelect();
+  });
+
+  // 開場：先到玩家選擇畫面
+  showProfileSelect();
 });
 
 // ── Level centering ───────────────────────────────────────────────────────────
@@ -438,13 +479,136 @@ function isLevelUnlocked(id, progress) {
   return false;
 }
 
+// ── Profile Select Screen ─────────────────────────────────────────────────────
+function showProfileSelect() {
+  gameMode = 'select';
+  document.getElementById('profile-select').style.display  = 'flex';
+  document.getElementById('level-select').style.display    = 'none';
+  document.getElementById('game-screen').style.display     = 'none';
+  document.getElementById('message-overlay').style.display = 'none';
+  buildProfileCards();
+}
+
+function buildProfileCards() {
+  const profiles  = getProfiles();
+  const container = document.getElementById('ps-cards');
+  container.innerHTML = '';
+
+  profiles.forEach(p => {
+    const completedCount = p.completed.length;
+    const score = LEVELS.reduce(
+      (s, l) => s + (p.completed.includes(l.id) ? l.group * 10 : 0), 0);
+
+    const card = document.createElement('div');
+    card.className = 'profile-card';
+    card.dataset.id = p.id;
+    card.innerHTML = `
+      <span class="pc-avatar">${p.avatar || '🦖'}</span>
+      <div class="pc-info">
+        <div class="pc-name">${_esc(p.name)}</div>
+        <div class="pc-stats">${completedCount} / 25 levels &nbsp;·&nbsp; ⭐ ${score} pts</div>
+      </div>
+      <button class="pc-play">Play!</button>
+      <button class="pc-del" title="Delete player">🗑️</button>
+    `;
+
+    // 點「出發」進入遊戲
+    card.querySelector('.pc-play').addEventListener('click', () => {
+      setCurrentProfileId(p.id);
+      refreshLevelSelectUI();
+      showLevelSelect();
+    });
+
+    // 點「🗑️」第一下 → 確認狀態；第二下 → 真的刪除
+    const delBtn = card.querySelector('.pc-del');
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (card.classList.contains('confirming')) {
+        deleteProfile(p.id);
+        buildProfileCards();
+      } else {
+        card.classList.add('confirming');
+        delBtn.textContent = 'Delete?';
+        // 點別處取消
+        const cancel = () => {
+          card.classList.remove('confirming');
+          delBtn.textContent = '🗑️';
+          document.removeEventListener('click', cancel);
+        };
+        setTimeout(() => document.addEventListener('click', cancel), 50);
+      }
+    });
+
+    container.appendChild(card);
+  });
+
+  // 顯示/隱藏「新增玩家」按鈕
+  document.getElementById('ps-add-btn').style.display =
+    profiles.length < MAX_PROFILES ? '' : 'none';
+}
+
+function _esc(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showNameDialog(onConfirm, onCancel) {
+  const dialog   = document.getElementById('name-dialog');
+  const input    = document.getElementById('name-input');
+  const confirmB = document.getElementById('name-confirm-btn');
+  const cancelB  = document.getElementById('name-cancel-btn');
+  const emojiEl  = document.getElementById('name-dialog-emoji');
+
+  // 重設狀態
+  input.value = '';
+  let selectedAvatar = '🦖';
+  emojiEl.textContent = selectedAvatar;
+
+  // 恐龍選擇按鈕
+  const optBtns = dialog.querySelectorAll('.dino-opt');
+  optBtns.forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.emoji === selectedAvatar);
+    btn.onclick = () => {
+      selectedAvatar = btn.dataset.emoji;
+      emojiEl.textContent = selectedAvatar;
+      optBtns.forEach(b => b.classList.toggle('selected', b === btn));
+    };
+  });
+
+  dialog.style.display = 'flex';
+  setTimeout(() => input.focus(), 80);
+
+  function doConfirm() {
+    const name = input.value.trim();
+    if (!name) { input.focus(); return; }
+    dialog.style.display = 'none';
+    cleanup();
+    onConfirm(name, selectedAvatar);
+  }
+  function doCancel() {
+    dialog.style.display = 'none';
+    cleanup();
+    if (onCancel) onCancel();
+  }
+  function cleanup() {
+    confirmB.onclick = null; cancelB.onclick = null; input.onkeydown = null;
+  }
+  confirmB.onclick = doConfirm;
+  cancelB.onclick  = doCancel;
+  input.onkeydown  = e => { if (e.key === 'Enter') doConfirm(); if (e.key === 'Escape') doCancel(); };
+}
+
 // ── Screen transitions ────────────────────────────────────────────────────────
 function showLevelSelect() {
   gameMode = 'select';
   currentLevelId = null;
-  document.getElementById('level-select').style.display = 'flex';
-  document.getElementById('game-screen').style.display = 'none';
+  document.getElementById('profile-select').style.display = 'none';
+  document.getElementById('level-select').style.display   = 'flex';
+  document.getElementById('game-screen').style.display    = 'none';
   document.getElementById('message-overlay').style.display = 'none';
+  // 更新玩家名稱列
+  const curP = getCurrentProfile();
+  const nameEl = document.getElementById('ls-player-name');
+  if (nameEl && curP) nameEl.textContent = `👤 ${curP.name}`;
   if (isRunning) {
     stopTrain();
     try { stopChugSound(); } catch(e) {}
@@ -685,6 +849,7 @@ function autoCheckLevel() {
 }
 
 function showLevelComplete(levelId) {
+  if (levelId === 25) { showAllComplete(); return; }
   messageMode = 'level-complete';
   const nextId = levelId + 1;
   const hasNext = nextId <= 25;
@@ -695,7 +860,7 @@ function showLevelComplete(levelId) {
 
   document.getElementById('message-icon').textContent = '🎉';
   document.getElementById('message-text').textContent =
-    `Level ${levelId} Complete! 🚂\n+${earned} pts! ⭐\nTotal: ${totalScore} / ${maxScore}`;
+    `Level ${levelId} Complete! 🦖\n+${earned} pts! ⭐\nTotal: ${totalScore} / ${maxScore}`;
 
   document.getElementById('message-close').textContent = 'Back to Levels';
   const nextBtn = document.getElementById('message-next');
@@ -818,21 +983,17 @@ function updateGapOverlay() {
     if (!neededKeys.has(el.dataset.key)) el.remove();
   });
 
+  const SPECIAL_TYPES = new Set(['tunnel', 'bridge', 'station', 'crossing']);
+
   // Create/update
   levelGaps.forEach(g => {
     const key = `${g.r},${g.c}`;
+    const isSpecial = SPECIAL_TYPES.has(g.type);
     let el = overlay.querySelector(`.gap-indicator[data-key="${key}"]`);
     if (!el) {
       el = document.createElement('div');
       el.className = 'gap-indicator';
       el.dataset.key = key;
-      const _levelNew = getLevelById(currentLevelId);
-      const _alwaysNew = !_levelNew || _levelNew.group === 1;
-      if (_alwaysNew || hintsRevealed.has(key)) {
-        el.innerHTML = getGapHintSVG(g.type);
-      } else {
-        el.innerHTML = `<span class="gap-question">?</span>`;
-      }
       overlay.appendChild(el);
     }
     // Position (include draw offset so indicator aligns with centred canvas)
@@ -841,14 +1002,22 @@ function updateGapOverlay() {
     el.style.width  = cellSize + 'px';
     el.style.height = cellSize + 'px';
 
-    // Always update inner content based on current reveal state
+    // Special types always show their SVG so kids know what to drag.
+    // Regular gaps show '?' for higher groups until the hint button is used.
     const _level = getLevelById(currentLevelId);
     const _always = !_level || _level.group === 1;
-    const _revealed = _always || hintsRevealed.has(key);
+    const _revealed = _always || hintsRevealed.has(key) || isSpecial;
     if (_revealed) {
       if (!el.querySelector('svg')) el.innerHTML = getGapHintSVG(g.type);
     } else {
       if (!el.querySelector('.gap-question')) el.innerHTML = `<span class="gap-question">?</span>`;
+    }
+
+    // Extra styling for special gaps: coloured border to catch attention
+    if (isSpecial && !gapFilled.has(key)) {
+      el.classList.add('gap-special');
+    } else {
+      el.classList.remove('gap-special');
     }
 
     if (gapFilled.has(key)) {
@@ -857,12 +1026,28 @@ function updateGapOverlay() {
       el.classList.remove('filled');
     }
   });
+
+  // Highlight toolbar buttons that match remaining unfilled special gaps
+  const neededSpecial = new Set(
+    levelGaps
+      .filter(g => SPECIAL_TYPES.has(g.type) && !gapFilled.has(`${g.r},${g.c}`))
+      .map(g => g.type)
+  );
+  document.querySelectorAll('#track-tools .tool-btn').forEach(btn => {
+    const t = btn.dataset.track;
+    if (neededSpecial.has(t)) btn.classList.add('tool-needed');
+    else btn.classList.remove('tool-needed');
+  });
+
   updateHintBtn();
 }
 
 function clearGapOverlay() {
   const overlay = document.getElementById('gap-overlay');
   if (overlay) overlay.innerHTML = '';
+  // Also clear toolbar glow
+  document.querySelectorAll('#track-tools .tool-btn.tool-needed')
+    .forEach(b => b.classList.remove('tool-needed'));
 }
 
 function getGapIndicatorEl(r, c) {
@@ -881,31 +1066,69 @@ function updateGapsCounter() {
   }
 }
 
+// ── Profile System ────────────────────────────────────────────────────────────
+const PROFILES_KEY = 'thomas_profiles';
+const MAX_PROFILES = 3;
+
+function _loadStore() {
+  try {
+    const raw = localStorage.getItem(PROFILES_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return { profiles: [], currentId: null };
+}
+function _saveStore(store) {
+  try { localStorage.setItem(PROFILES_KEY, JSON.stringify(store)); } catch(e) {}
+}
+
+function getProfiles()         { return _loadStore().profiles; }
+function getCurrentProfileId() { return _loadStore().currentId; }
+function getCurrentProfile() {
+  const s = _loadStore();
+  return s.profiles.find(p => p.id === s.currentId) || null;
+}
+function setCurrentProfileId(id) {
+  const s = _loadStore(); s.currentId = id; _saveStore(s);
+}
+function createProfile(name, avatar) {
+  const s = _loadStore();
+  if (s.profiles.length >= MAX_PROFILES) return null;
+  const id = 'p' + Date.now();
+  s.profiles.push({ id, name: name.trim().slice(0, 10), avatar: avatar || '🦖', completed: [], dinoLevels: [] });
+  s.currentId = id;
+  _saveStore(s);
+  return id;
+}
+function deleteProfile(id) {
+  const s = _loadStore();
+  s.profiles = s.profiles.filter(p => p.id !== id);
+  if (s.currentId === id) s.currentId = s.profiles[0]?.id || null;
+  _saveStore(s);
+}
+function resetCurrentProfile() {
+  const s = _loadStore();
+  const p = s.profiles.find(pr => pr.id === s.currentId);
+  if (p) { p.completed = []; p.dinoLevels = []; }
+  _saveStore(s);
+}
+
 // ── Progress storage ──────────────────────────────────────────────────────────
 function getLevelProgress() {
-  try {
-    const raw = localStorage.getItem('thomas_progress');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return { completed: new Set(parsed.completed || []) };
-    }
-  } catch(e) {}
+  const p = getCurrentProfile();
+  if (p) return { completed: new Set(p.completed) };
   return { completed: new Set() };
 }
 
 function saveLevelComplete(id) {
-  const progress = getLevelProgress();
-  progress.completed.add(id);
-  try {
-    localStorage.setItem('thomas_progress', JSON.stringify({
-      completed: Array.from(progress.completed)
-    }));
-  } catch(e) {}
+  const s = _loadStore();
+  const p = s.profiles.find(pr => pr.id === s.currentId);
+  if (p && !p.completed.includes(id)) p.completed.push(id);
+  _saveStore(s);
+  updateScoreDisplay();
 }
 
 function resetProgress() {
-  try { localStorage.removeItem('thomas_progress'); } catch(e) {}
-  try { localStorage.removeItem('thomas_dino_levels'); } catch(e) {}
+  resetCurrentProfile();
   refreshLevelSelectUI();
   updateScoreDisplay();
 }
@@ -963,40 +1186,45 @@ function redrawGrid() {
   const w = gridCanvas.width, h = gridCanvas.height;
   const c = cellSize;
 
-  // Full-canvas scene background
-  // Sky
-  const skyGrad = gridCtx.createLinearGradient(0, 0, 0, h * 0.45);
-  skyGrad.addColorStop(0, weatherSky[0]);
-  skyGrad.addColorStop(1, weatherSky[1]);
-  gridCtx.fillStyle = skyGrad;
-  gridCtx.fillRect(0, 0, w, h * 0.45);
-  // Ground
-  const groundGrad = gridCtx.createLinearGradient(0, h * 0.45, 0, h);
-  groundGrad.addColorStop(0, '#6DBF67');
-  groundGrad.addColorStop(1, '#4A9E44');
-  gridCtx.fillStyle = groundGrad;
-  gridCtx.fillRect(0, h * 0.45, w, h * 0.55);
-  // Horizon haze
-  const hazeGrad = gridCtx.createLinearGradient(0, h*0.38, 0, h*0.52);
-  hazeGrad.addColorStop(0, 'rgba(135,206,235,0.3)');
-  hazeGrad.addColorStop(1, 'rgba(107,184,103,0)');
-  gridCtx.fillStyle = hazeGrad;
-  gridCtx.fillRect(0, h*0.38, w, h*0.14);
+  // ── Minecraft biome background ──────────────────────────────────────────
+  // Sky fills the top margin above the grid; grass fills the grid + below.
+  const horizon = Math.max(0, drawOffsetY);
+  gridCtx.fillStyle = weatherSky[0];
+  gridCtx.fillRect(0, 0, w, h);
+  // a slightly lighter sky band near the horizon
+  if (horizon > 6) {
+    gridCtx.fillStyle = weatherSky[1];
+    gridCtx.fillRect(0, Math.max(0, horizon - Math.floor(h * 0.10)), w, Math.floor(h * 0.10));
+  }
 
-  // Weather effects (clouds, rain)
-  drawWeatherClouds(gridCtx, w, h);
+  // Blocky clouds — only when there's a real sky strip to put them in
+  if (horizon > h * 0.12) drawWeatherClouds(gridCtx, w, horizon);
+
+  // Grass-block ground, tiled and aligned to the play grid
+  gridCtx.save();
+  gridCtx.beginPath(); gridCtx.rect(0, horizon, w, h - horizon); gridCtx.clip();
+  const ax = ((drawOffsetX % c) + c) % c;
+  const ay = ((drawOffsetY % c) + c) % c;
+  for (let gy = ay - c; gy < h; gy += c)
+    for (let gx = ax - c; gx < w; gx += c)
+      drawGrassBlock(gridCtx, gx, gy, c);
+  // dirt rim right under the grass horizon
+  gridCtx.fillStyle = 'rgba(92,62,42,0.25)';
+  gridCtx.fillRect(0, horizon, w, Math.max(2, Math.floor(c * 0.06)));
+  gridCtx.restore();
+
   updateRain(w, h);
   drawRain(gridCtx, w, h);
 
-  // Dino decorations
+  // Dino decorations (blocky idle dinos in the margins)
   drawDinos(gridCtx, w, h);
 
   // Everything else is drawn relative to the centred grid origin
   gridCtx.save();
   gridCtx.translate(drawOffsetX, drawOffsetY);
 
-  // Grid lines (only within the COLS×ROWS play area)
-  gridCtx.strokeStyle = 'rgba(0,100,0,0.15)';
+  // Play-area block seams (subtle)
+  gridCtx.strokeStyle = 'rgba(0,0,0,0.10)';
   gridCtx.lineWidth = 1;
   for (let r = 0; r <= ROWS; r++) {
     gridCtx.beginPath(); gridCtx.moveTo(0, r*c); gridCtx.lineTo(COLS*c, r*c); gridCtx.stroke();
@@ -1099,7 +1327,7 @@ function showMessage(icon, text, showNext) {
   messageMode = 'info';
   document.getElementById('message-icon').textContent = icon;
   document.getElementById('message-text').textContent = text;
-  document.getElementById('message-close').textContent = '好的！';
+  document.getElementById('message-close').textContent = 'OK!';
   document.getElementById('message-next').style.display = showNext ? '' : 'none';
   document.getElementById('message-overlay').style.display = 'flex';
 }
@@ -1178,25 +1406,31 @@ function drawRain(ctx, w, h) {
 }
 
 function drawWeatherClouds(ctx, w, h) {
-  const baseY = h * 0.08;
-  const alpha = weatherType === 'sunny' ? 0.85 : 0.7;
-  const clr = weatherType === 'rainy' ? 'rgba(180,180,185,' : 'rgba(255,255,255,';
+  const baseY = h * 0.07;
+  const alpha = weatherType === 'sunny' ? 0.95 : 0.8;
+  const clr = weatherType === 'rainy' ? '#B4B4B9' : '#FFFFFF';
+  const u = Math.max(8, Math.round(h * 0.022));   // cloud "pixel" size
+  // Each cloud = a chunky pixel blob (cols of varying height)
   const clouds = [
-    { x: w*0.12, y: baseY,      r: [30,20,24] },
-    { x: w*0.55, y: baseY*0.7,  r: [38,26,30] },
-    { x: w*0.82, y: baseY*1.3,  r: [28,18,22] },
+    { x: w*0.12, y: baseY,        cols: [1,2,3,3,2,1] },
+    { x: w*0.52, y: baseY*0.6,    cols: [1,2,2,3,2,2,1] },
+    { x: w*0.80, y: baseY*1.25,   cols: [1,2,2,1] },
   ];
-  clouds.forEach(c => {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    c.r.forEach((r, i) => {
-      ctx.fillStyle = clr + (0.7 + i*0.1) + ')';
-      ctx.beginPath();
-      ctx.arc(c.x + (i-1)*r*0.9, c.y, r, 0, Math.PI*2);
-      ctx.fill();
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = clr;
+  clouds.forEach(cl => {
+    cl.cols.forEach((tall, i) => {
+      ctx.fillRect(cl.x + i*u, cl.y - tall*u, u, tall*u);
     });
-    ctx.restore();
+    // a flat base row
+    ctx.fillRect(cl.x, cl.y, cl.cols.length*u, u);
   });
+  // soft shade on the underside
+  ctx.globalAlpha = alpha * 0.25;
+  ctx.fillStyle = '#000';
+  clouds.forEach(cl => ctx.fillRect(cl.x, cl.y + u*0.6, cl.cols.length*u, u*0.4));
+  ctx.restore();
 }
 
 function startWeatherAnim() {
@@ -1214,72 +1448,43 @@ function startWeatherAnim() {
 
 // ── Dino decorations ──────────────────────────────────────────────────────────
 function drawDinos(ctx, w, h) {
-  // Dino 1: small T-Rex in bottom-left margin, outside grid
-  const s1 = Math.min(w, h) * 0.07;
-  const x1 = drawOffsetX * 0.4, y1 = h - s1 * 1.8;
-  if (drawOffsetX > s1 * 1.5) _drawTRex(ctx, x1, y1, s1, '#5D8A3C');
-
-  // Dino 2: slightly larger in bottom-right margin
-  const s2 = Math.min(w, h) * 0.085;
-  const x2 = w - drawOffsetX * 0.5, y2 = h - s2 * 1.6;
-  if (drawOffsetX > s2 * 1.5) _drawTRex(ctx, x2, y2, s2, '#7A5C2E', true);
+  if (typeof DINO_TYPES === 'undefined') return;
+  const S = Math.round(Math.min(w, h) * 0.12);
+  const lvl = (typeof currentLevelId === 'number' ? currentLevelId : 1);
+  const groundY = h - S * 0.7;
+  const rightMargin = w - (drawOffsetX + COLS * cellSize);
+  // Left margin idle dino (faces right)
+  if (drawOffsetX > S * 0.9) {
+    ctx.save(); ctx.translate(drawOffsetX * 0.5, groundY);
+    DINO_TYPES[lvl % DINO_TYPES.length].draw(ctx, S, 0, 0);
+    ctx.restore();
+  }
+  // Right margin idle dino (faces left)
+  if (rightMargin > S * 0.9) {
+    ctx.save(); ctx.translate(w - rightMargin * 0.5, groundY); ctx.scale(-1, 1);
+    DINO_TYPES[(lvl + 1) % DINO_TYPES.length].draw(ctx, S * 1.05, 0, 0);
+    ctx.restore();
+  }
 }
 
-function _drawTRex(ctx, cx, baseY, s, color, flip) {
-  ctx.save();
-  if (flip) { ctx.translate(cx*2, 0); ctx.scale(-1, 1); }
-  ctx.fillStyle = color;
-  // Body
-  ctx.beginPath();
-  ctx.ellipse(cx, baseY - s*0.5, s*0.55, s*0.38, -0.1, 0, Math.PI*2);
-  ctx.fill();
-  // Head
-  ctx.beginPath();
-  ctx.ellipse(cx + s*0.55, baseY - s*0.9, s*0.3, s*0.2, 0.3, 0, Math.PI*2);
-  ctx.fill();
-  // Snout
-  ctx.fillRect(cx + s*0.72, baseY - s*0.84, s*0.2, s*0.1);
-  // Tail
-  ctx.beginPath();
-  ctx.moveTo(cx - s*0.55, baseY - s*0.5);
-  ctx.lineTo(cx - s*0.95, baseY - s*0.2);
-  ctx.lineTo(cx - s*0.7,  baseY - s*0.45);
-  ctx.closePath(); ctx.fill();
-  // Upper-arm (tiny)
-  ctx.beginPath();
-  ctx.ellipse(cx + s*0.3, baseY - s*0.4, s*0.1, s*0.06, 0.8, 0, Math.PI*2);
-  ctx.fill();
-  // Legs
-  ctx.fillStyle = color;
-  ctx.fillRect(cx - s*0.1, baseY - s*0.15, s*0.14, s*0.55);
-  ctx.fillRect(cx + s*0.15, baseY - s*0.05, s*0.14, s*0.45);
-  // Feet
-  ctx.fillRect(cx - s*0.14, baseY + s*0.38, s*0.22, s*0.07);
-  ctx.fillRect(cx + s*0.12, baseY + s*0.38, s*0.22, s*0.07);
-  // Eye
-  ctx.fillStyle = 'white';
-  ctx.beginPath(); ctx.arc(cx + s*0.65, baseY - s*0.95, s*0.055, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#1a1a1a';
-  ctx.beginPath(); ctx.arc(cx + s*0.67, baseY - s*0.95, s*0.03, 0, Math.PI*2); ctx.fill();
-  ctx.restore();
-}
 
 // ── Dino event ────────────────────────────────────────────────────────────────
 
 function getDinoEventLevels() {
-  const KEY = 'thomas_dino_levels';
-  try {
-    const s = localStorage.getItem(KEY);
-    if (s) return JSON.parse(s);
-  } catch(e) {}
-  // Pick 2 random from groups 4-5
-  const pool = LEVELS.filter(l => l.group >= 4).map(l => l.id);
+  const s = _loadStore();
+  const p = s.profiles.find(pr => pr.id === s.currentId);
+  if (!p) return [];
+  if (p.dinoLevels && p.dinoLevels.length) return p.dinoLevels;
+  // Dinos show up often now: about half of every level from group 2 up,
+  // picked randomly per player so two kids get different surprises.
+  const pool = LEVELS.filter(l => l.group >= 2).map(l => l.id);
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  const picks = pool.slice(0, 2);
-  try { localStorage.setItem(KEY, JSON.stringify(picks)); } catch(e) {}
+  const picks = pool.slice(0, Math.max(6, Math.ceil(pool.length * 0.5)));
+  p.dinoLevels = picks;
+  _saveStore(s);
   return picks;
 }
 
@@ -1289,9 +1494,17 @@ function _startDinoEvent(loopPath, pxPath) {
   dinoRunning   = false;
   brokenCells.clear();
 
-  // Pick 3 stomp positions: tile indices at ~20%, ~50%, ~75% of loop
+  // Pick a random species for this visit
+  currentDino = DINO_TYPES[Math.floor(Math.random() * DINO_TYPES.length)];
+
+  // Vary how many tracks get smashed (2–4) and where along the loop
   const n = loopPath.length;
-  const fracs = [0.22, 0.50, 0.76];
+  const stompCount = 2 + Math.floor(Math.random() * 3);
+  const jitter = () => (Math.random() - 0.5) * 0.12;
+  const fracs = [];
+  for (let i = 0; i < stompCount; i++) {
+    fracs.push(Math.min(0.92, Math.max(0.08, (i + 0.5) / stompCount + jitter())));
+  }
   dinoStomps = [];
   const used = new Set();
   fracs.forEach(fr => {
@@ -1327,9 +1540,9 @@ function _startDinoEvent(loopPath, pxPath) {
   warn.id = 'dino-warning';
   warn.innerHTML = `
     <div class="dino-warn-box">
-      <div class="dino-warn-icon">🦖</div>
-      <div class="dino-warn-text">⚠️ 暴龍出現了！</div>
-      <div class="dino-warn-sub">快逃！軌道要被踩壞了！</div>
+      <div class="dino-warn-icon">${currentDino.emoji}</div>
+      <div class="dino-warn-text">⚠️ ${currentDino.warn}</div>
+      <div class="dino-warn-sub">Watch out — the rails are in danger!</div>
     </div>`;
   document.body.appendChild(warn);
   _playDinoRoar();
@@ -1406,7 +1619,7 @@ function _runDinoLoop() {
     });
 
     // Draw T-Rex
-    const legSwing = Math.sin(dinoPos * 0.25) * 8;
+    const legSwing = Math.sin(dinoPos * 0.5) * 8;
     _drawDinoWalker(trainCtx, wp.x, wp.y, wp.angle,
                     isStomping ? (currentStomp ? currentStomp.animLegRaise : 0) : 0,
                     legSwing);
@@ -1426,6 +1639,7 @@ function _doStomp(stomp, wp) {
   const key = `${stomp.r},${stomp.c}`;
   brokenCells.add(key);
   _playDinoStomp();
+  _playStompRoar();
   _screenShake(10, 400);
   redrawGrid();
 }
@@ -1450,7 +1664,9 @@ function _finishDinoEvent() {
   updateHintBtn();
 
   setTimeout(() => {
-    showMessage('🦖', '暴龍踩壞了 3 條軌道！\n幫湯瑪士修好它們！', false);
+    const _d = currentDino || DINO_TYPES[0];
+    showMessage(_d.emoji, _d.name + ' smashed the rails!\nFix the gaps so the minecart can pass! 🔧', false);
+    messageMode = 'dino-repair';  // Override so OK stays in level
   }, 300);
 }
 
@@ -1494,103 +1710,148 @@ function _drawCrackOverlay(ctx, x, y, c) {
   ctx.restore();
 }
 
-function _drawDinoWalker(ctx, x, y, angle, legRaise, legSwing) {
+function _drawDinoWalker(ctx, x, y, angle, attack, swing) {
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(angle);
-
-  const S = 1.6;
-  ctx.scale(S, S);
-
-  // Shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.beginPath(); ctx.ellipse(0, 32, 32, 9, 0, 0, Math.PI*2); ctx.fill();
-
-  // Body
-  ctx.fillStyle = '#4E342E';
-  ctx.beginPath(); ctx.ellipse(-4, 0, 30, 20, -0.1, 0, Math.PI*2); ctx.fill();
-
-  // Tail
-  ctx.beginPath();
-  ctx.moveTo(-28, 2);
-  ctx.bezierCurveTo(-42, 6, -54, -4, -58, -12);
-  ctx.bezierCurveTo(-54, -6, -44, 10, -28, 10);
-  ctx.fill();
-
-  // Head
-  ctx.fillStyle = '#4E342E';
-  ctx.beginPath(); ctx.ellipse(22, -16, 20, 13, 0.35, 0, Math.PI*2); ctx.fill();
-
-  // Snout
-  ctx.fillStyle = '#6D4C41';
-  ctx.beginPath(); ctx.ellipse(38, -13, 13, 7, 0.15, 0, Math.PI*2); ctx.fill();
-
-  // Lower jaw (open slightly during stomp)
-  ctx.fillStyle = '#5D4037';
-  const jawAngle = legRaise * 0.3;
-  ctx.save(); ctx.translate(28,-10); ctx.rotate(jawAngle);
-  ctx.beginPath(); ctx.ellipse(10,-4,12,5,0.15,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle='#FFFDE7';
-  for(let i=0;i<4;i++){
-    ctx.beginPath(); ctx.moveTo(i*6,0); ctx.lineTo(i*6+3,6); ctx.lineTo(i*6+6,0); ctx.fill();
-  }
+  const goingLeft = Math.cos(angle) < -0.1;
+  if (goingLeft) ctx.scale(-1, 1);
+  const sc = 1 + attack * 0.05;
+  ctx.scale(sc, sc);
+  const S = Math.round((typeof cellSize === 'number' ? cellSize : 60) * 0.9);
+  const d = currentDino && currentDino.draw ? currentDino.draw : _drawDinoTRex;
+  d(ctx, S, attack, swing);
   ctx.restore();
+}
 
-  // Eye (angry)
-  ctx.fillStyle = '#FFEB3B';
-  ctx.beginPath(); ctx.ellipse(18, -22, 6, 5, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#E53935';
-  ctx.beginPath(); ctx.ellipse(19, -22, 4, 4, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#111';
-  ctx.beginPath(); ctx.arc(20, -22, 2, 0, Math.PI*2); ctx.fill();
-  // Angry brow
-  ctx.strokeStyle='#3E2723'; ctx.lineWidth=2.5;
-  ctx.beginPath(); ctx.moveTo(12,-29); ctx.lineTo(26,-25); ctx.stroke();
+function _dinoShadow(ctx, S, cy) {
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.beginPath();
+  ctx.ellipse(0, cy, S * 0.55, S * 0.1, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
 
-  // Tiny arms
-  ctx.fillStyle='#5D4037';
-  ctx.beginPath(); ctx.ellipse(14, 4, 8, 5, 0.9, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle='#3E2723';
-  ctx.fillRect(19, 7, 5, 3); ctx.fillRect(22, 9, 4, 3);
+function _drawDinoTRex(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#5FA83C', D='#3B6B22', B='#C7E6A0', O='#2E5418';
+  const bob = Math.sin(swing*0.15)*S*0.03;
+  _dinoShadow(ctx, S, S*0.66+bob);
+  const lLift = Math.max(0,-Math.sin(swing*0.15))*S*0.12;
+  const rLift = attack*S*0.30;
+  R(-S*0.16, S*0.10+bob-lLift, S*0.16, S*0.46, D);
+  R(-S*0.20, S*0.50+bob-lLift, S*0.26, S*0.10, D);
+  R(-S*0.80, -S*0.06+bob, S*0.32, S*0.16, G);
+  R(-S*1.00, S*0.04+bob, S*0.24, S*0.14, D);
+  R(-S*0.50, -S*0.26+bob, S*0.78, S*0.46, G);
+  R(-S*0.42, -S*0.04+bob, S*0.52, S*0.22, B);
+  R(S*0.04, S*0.06+bob-rLift, S*0.16, S*0.48, G);
+  R(S*0.00, S*0.50+bob-rLift, S*0.28, S*0.10, D);
+  R(S*0.10, -S*0.04+bob, S*0.10, S*0.18, D);
+  R(S*0.18, -S*0.62+bob, S*0.42, S*0.34, G);
+  R(S*0.20, -S*0.60+bob, S*0.38, S*0.06, '#7DC850');
+  const jaw = attack*S*0.12;
+  R(S*0.52, -S*0.44+bob, S*0.30, S*0.14, G);
+  R(S*0.52, -S*0.30+bob+jaw, S*0.28, S*0.08, D);
+  R(S*0.58, -S*0.30+bob, S*0.05, S*0.07, '#fff');
+  R(S*0.68, -S*0.30+bob, S*0.05, S*0.07, '#fff');
+  R(S*0.34, -S*0.54+bob, S*0.12, S*0.12, '#fff');
+  R(S*0.40, -S*0.50+bob, S*0.06, S*0.06, '#1A1A1A');
+  ctx.strokeStyle=O; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(S*0.18, -S*0.62+bob, S*0.42, S*0.34);
+  ctx.strokeRect(-S*0.50, -S*0.26+bob, S*0.78, S*0.46);
+}
 
-  // Legs
-  const raisedY = 14 - legRaise * 18;
-  const raisedH = 22 + legRaise * 4;
+function _drawDinoTricera(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#8A9B6E', D='#5E6B47', F='#C2A569', H='#F0EAD6';
+  const bob = Math.sin(swing*0.15)*S*0.025;
+  const lunge = attack*S*0.14;
+  _dinoShadow(ctx, S, S*0.66+bob);
+  R(-S*0.40, S*0.16+bob, S*0.16, S*0.40, D);
+  R(-S*0.16, S*0.16+bob, S*0.16, S*0.40, D);
+  R(S*0.06, S*0.16+bob, S*0.16, S*0.40, D);
+  R(S*0.24, S*0.16+bob, S*0.16, S*0.40, D);
+  R(-S*0.68, -S*0.04+bob, S*0.24, S*0.16, G);
+  R(-S*0.46, -S*0.24+bob, S*0.78, S*0.44, G);
+  R(-S*0.40, -S*0.02+bob, S*0.50, S*0.20, '#A7B587');
+  const hx=S*0.30+lunge, hy=-S*0.18+bob+lunge*0.4;
+  R(hx-S*0.08, hy-S*0.24, S*0.20, S*0.54, F);
+  R(hx-S*0.12, hy-S*0.16, S*0.06, S*0.40, D);
+  R(hx, hy-S*0.10, S*0.34, S*0.34, G);
+  R(hx+S*0.30, hy+S*0.06, S*0.16, S*0.14, D);
+  R(hx+S*0.16, hy-S*0.32, S*0.07, S*0.28, H);
+  R(hx+S*0.30, hy-S*0.26, S*0.07, S*0.24, H);
+  R(hx+S*0.42, hy+S*0.00, S*0.12, S*0.06, H);
+  R(hx+S*0.06, hy+S*0.02, S*0.08, S*0.08, '#fff');
+  R(hx+S*0.09, hy+S*0.05, S*0.04, S*0.04, '#1A1A1A');
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(-S*0.46, -S*0.24+bob, S*0.78, S*0.44);
+}
 
-  // Left leg (walking swing)
-  ctx.fillStyle='#4E342E';
-  ctx.fillRect(-10, 16, 11, 20 + Math.max(0, legSwing * 0.4));
-  ctx.fillStyle='#3E2723'; ctx.fillRect(-13, 35+Math.max(0,legSwing*0.4), 17, 7);
+function _drawDinoBronto(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#6E8FB0', D='#46627E', B='#AEC4DA';
+  const bob = Math.sin(swing*0.15)*S*0.02;
+  const dip = attack*S*0.5;
+  _dinoShadow(ctx, S, S*0.70+bob);
+  R(-S*0.42, S*0.18+bob, S*0.18, S*0.46, D);
+  R(-S*0.16, S*0.20+bob, S*0.18, S*0.44, D);
+  R(S*0.10, S*0.18+bob, S*0.18, S*0.46, D);
+  R(S*0.30, S*0.20+bob, S*0.16, S*0.44, D);
+  R(-S*0.80, -S*0.02+bob, S*0.36, S*0.16, G);
+  R(-S*1.04, S*0.06+bob, S*0.28, S*0.12, D);
+  R(-S*0.50, -S*0.30+bob, S*0.92, S*0.50, G);
+  R(-S*0.42, -S*0.06+bob, S*0.62, S*0.22, B);
+  R(S*0.30, -S*0.62+bob+dip, S*0.18, S*0.40, G);
+  R(S*0.40, -S*0.92+bob+dip, S*0.18, S*0.38, G);
+  R(S*0.50, -S*1.04+bob+dip, S*0.26, S*0.20, G);
+  R(S*0.72, -S*0.98+bob+dip, S*0.12, S*0.10, D);
+  R(S*0.58, -S*1.00+bob+dip, S*0.07, S*0.07, '#fff');
+  R(S*0.61, -S*0.98+bob+dip, S*0.035, S*0.035, '#1A1A1A');
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(-S*0.50, -S*0.30+bob, S*0.92, S*0.50);
+}
 
-  // Right leg (stomp leg)
-  ctx.fillStyle='#4E342E';
-  ctx.fillRect(4, raisedY, 11, raisedH);
-  ctx.fillStyle='#3E2723'; ctx.fillRect(2, raisedY+raisedH, 17, 7);
-
-  // Impact dust when slamming
-  if (legRaise < 0.15 && legRaise >= 0) {
-    ctx.fillStyle='rgba(120,80,40,0.55)';
-    for(let d=0;d<5;d++){
-      const a=d/5*Math.PI*2, dist=20*(0.15-legRaise)/0.15;
-      ctx.beginPath(); ctx.arc(10+Math.cos(a)*dist, 44+Math.sin(a)*dist*0.4, 3+d, 0, Math.PI*2); ctx.fill();
-    }
-  }
-
+function _drawDinoPtero(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#C56A3A', D='#7E3D1F', W='#B5612F', C='#E0A35A';
+  const flap = Math.sin(swing*0.25)*S*0.22;
+  const dive = attack*S*0.30;
+  _dinoShadow(ctx, S, S*0.78);
+  ctx.save();
+  ctx.translate(0, -S*0.35+dive);
+  R(-S*0.70, -S*0.06-flap, S*0.50, S*0.12, D);
+  R(-S*0.96, -S*0.02-flap*1.3, S*0.28, S*0.10, D);
+  R(-S*0.18, -S*0.12, S*0.40, S*0.26, G);
+  R(-S*0.12, -S*0.04, S*0.26, S*0.14, C);
+  R(S*0.00, -S*0.06+flap, S*0.55, S*0.12, W);
+  R(S*0.50, -S*0.02+flap*1.3, S*0.30, S*0.10, W);
+  R(-S*0.05, S*0.12, S*0.07, S*0.16, D);
+  R(S*0.08, S*0.12, S*0.07, S*0.16, D);
+  R(S*0.18, -S*0.18, S*0.22, S*0.20, G);
+  R(S*0.38, -S*0.12, S*0.32, S*0.08, D);
+  R(S*0.14, -S*0.30, S*0.16, S*0.10, C);
+  R(S*0.26, -S*0.14, S*0.07, S*0.07, '#fff');
+  R(S*0.29, -S*0.12, S*0.035, S*0.035, '#1A1A1A');
   ctx.restore();
 }
 
 function _playDinoRoar() {
+  // Alarm siren: alternating hi-lo beeps
   try {
     const ac = new (window.AudioContext||window.webkitAudioContext)();
-    [0, 0.15, 0.35].forEach(delay => {
+    const freqs = [1040, 740, 1040, 740, 1040, 740];
+    freqs.forEach((freq, i) => {
+      const delay = i * 0.17;
       const o = ac.createOscillator(), g = ac.createGain();
       o.connect(g); g.connect(ac.destination);
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(90 - delay*60, ac.currentTime+delay);
-      o.frequency.exponentialRampToValueAtTime(35, ac.currentTime+delay+0.7);
-      g.gain.setValueAtTime(0.55, ac.currentTime+delay);
-      g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+delay+0.9);
-      o.start(ac.currentTime+delay); o.stop(ac.currentTime+delay+0.9);
+      o.type = 'square';
+      o.frequency.setValueAtTime(freq, ac.currentTime + delay);
+      g.gain.setValueAtTime(0.0, ac.currentTime + delay);
+      g.gain.linearRampToValueAtTime(0.28, ac.currentTime + delay + 0.04);
+      g.gain.setValueAtTime(0.28, ac.currentTime + delay + 0.11);
+      g.gain.linearRampToValueAtTime(0.0, ac.currentTime + delay + 0.15);
+      o.start(ac.currentTime + delay);
+      o.stop(ac.currentTime + delay + 0.16);
     });
   } catch(e) {}
 }
@@ -1615,5 +1876,189 @@ function _playDinoStomp() {
     const bp=ac.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=600; bp.Q.value=1.5;
     src.buffer=buf; src.connect(bp); bp.connect(ac.destination);
     src.start(ac.currentTime+0.03);
+  } catch(e) {}
+}
+
+function _playStompRoar() {
+  // Short dinosaur growl: descending sawtooth burst
+  try {
+    const ac = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(200, ac.currentTime);
+    o.frequency.exponentialRampToValueAtTime(60, ac.currentTime + 0.45);
+    g.gain.setValueAtTime(0.5, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.5);
+    o.start(ac.currentTime); o.stop(ac.currentTime + 0.5);
+    // Low rumble underneath
+    const o2 = ac.createOscillator(), g2 = ac.createGain();
+    o2.connect(g2); g2.connect(ac.destination);
+    o2.type = 'sine';
+    o2.frequency.setValueAtTime(80, ac.currentTime);
+    o2.frequency.exponentialRampToValueAtTime(30, ac.currentTime + 0.4);
+    g2.gain.setValueAtTime(0.35, ac.currentTime);
+    g2.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.45);
+    o2.start(ac.currentTime + 0.05); o2.stop(ac.currentTime + 0.5);
+  } catch(e) {}
+}
+
+// ── Grand Finale Celebration ──────────────────────────────────────────────────
+let _celebCtx    = null;
+let _celebW      = 0;
+let _celebH      = 0;
+let _celebAnimId = null;
+let _celebParts  = [];
+let _celebBurst  = 0;
+
+function showAllComplete() {
+  document.getElementById('message-overlay').style.display = 'none';
+  const overlay = document.getElementById('celebration-overlay');
+  document.getElementById('celebration-score').textContent =
+    `⭐  ${getScore()} / ${getMaxScore()} pts`;
+  overlay.style.display = 'flex';
+  _startCelebration();
+  _playGrandFanfare();
+  document.getElementById('celebration-back').onclick = () => {
+    _stopCelebration();
+    overlay.style.display = 'none';
+    showProfileSelect();
+  };
+}
+
+function _startCelebration() {
+  const canvas = document.getElementById('celebration-canvas');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  _celebCtx = canvas.getContext('2d');
+  _celebW = canvas.width;
+  _celebH = canvas.height;
+  _celebParts = [];
+  _celebBurst = 0;
+  // Opening volley: 7 bursts spread over first 1.5 s
+  for (let i = 0; i < 7; i++) {
+    setTimeout(() => { if (_celebCtx) _celebLaunch(); }, i * 210);
+  }
+  (function frame() {
+    _celebCtx.fillStyle = 'rgba(8,8,28,0.17)';
+    _celebCtx.fillRect(0, 0, _celebW, _celebH);
+    _celebBurst++;
+    if (_celebBurst % 54 === 0) _celebLaunch();
+    _celebUpdate();
+    _celebAnimId = requestAnimationFrame(frame);
+  })();
+}
+
+function _stopCelebration() {
+  if (_celebAnimId) { cancelAnimationFrame(_celebAnimId); _celebAnimId = null; }
+  _celebCtx = null;
+  _celebParts = [];
+}
+
+function _celebLaunch() {
+  const x   = _celebW * 0.12 + Math.random() * _celebW * 0.76;
+  const y   = _celebH * 0.06 + Math.random() * _celebH * 0.48;
+  const hue = Math.random() * 360;
+  // Spark burst
+  const n = 55 + Math.floor(Math.random() * 35);
+  for (let i = 0; i < n; i++) {
+    const a   = (Math.PI * 2 * i / n) + (Math.random() - 0.5) * 0.4;
+    const spd = 1.8 + Math.random() * 5.5;
+    _celebParts.push({
+      x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd,
+      life: 1.0, decay: 0.013 + Math.random() * 0.013,
+      r: 1.8 + Math.random() * 2.4,
+      col: `hsl(${hue + Math.random() * 45},100%,65%)`,
+      ribbon: false,
+    });
+  }
+  // Confetti ribbons
+  const cols = ['#FF6B6B','#FFD93D','#6BCB77','#4D96FF','#FF6BFF','#FF9A3C','#00E5FF','#FFFFFF'];
+  for (let i = 0; i < 24; i++) {
+    _celebParts.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 10,
+      vy: -Math.random() * 10 - 1,
+      life: 1.0, decay: 0.006 + Math.random() * 0.007,
+      r: 0,
+      col: cols[Math.floor(Math.random() * cols.length)],
+      ribbon: true,
+      rot: Math.random() * Math.PI * 2,
+      rotSpd: (Math.random() - 0.5) * 0.28,
+      w: 6 + Math.random() * 11,
+      h: 3  + Math.random() * 5,
+    });
+  }
+}
+
+function _celebUpdate() {
+  const ctx = _celebCtx;
+  _celebParts = _celebParts.filter(p => p.life > 0.02);
+  for (const p of _celebParts) {
+    p.vy += 0.072;
+    p.vx *= 0.993; p.vy *= 0.993;
+    p.x  += p.vx;  p.y  += p.vy;
+    p.life -= p.decay;
+    ctx.globalAlpha = Math.min(1, p.life * 0.95);
+    if (p.ribbon) {
+      p.rot += p.rotSpd;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.col;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    } else {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * Math.max(0.15, p.life), 0, Math.PI * 2);
+      ctx.fillStyle = p.col;
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+function _playGrandFanfare() {
+  try {
+    const ac = getAudioCtx();
+    // Triumphant rising arpeggio: C4 → E4 → G4 → C5 → E5 → G5 → C6 (big sustain)
+    const notes = [
+      [523,  0.00, 0.50],
+      [659,  0.14, 0.50],
+      [784,  0.28, 0.52],
+      [1047, 0.44, 0.56],
+      [1319, 0.58, 0.58],
+      [1568, 0.72, 0.62],
+      [2093, 0.92, 1.10],  // top note — long hold
+    ];
+    notes.forEach(([freq, delay, dur]) => {
+      [1, 2, 2.756].forEach((ratio, hi) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.type = 'sine';
+        o.frequency.value = freq * ratio;
+        const vol = [0.28, 0.10, 0.06][hi];
+        const t = ac.currentTime + delay;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(vol, t + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.start(t); o.stop(t + dur + 0.06);
+      });
+    });
+    // Low bass octave echo on the upper half of melody
+    notes.slice(3).forEach(([freq, delay, dur]) => {
+      [1, 2].forEach((ratio, hi) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.connect(g); g.connect(ac.destination);
+        o.type = 'sine';
+        o.frequency.value = freq * ratio * 0.5;
+        const vol = [0.09, 0.04][hi];
+        const t = ac.currentTime + delay + 0.18;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(vol, t + 0.04);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.75);
+        o.start(t); o.stop(t + dur);
+      });
+    });
   } catch(e) {}
 }

@@ -38,24 +38,44 @@ function clearGrid() { grid = {}; }
 
 const W_FRAC = 0.12; // half-gauge as fraction of c
 
-function drawBed(ctx, x, y, c) {
-  ctx.fillStyle = '#A5D6A7';
+// A single Minecraft-style grass block (top view): green base, checker shading,
+// pixel grass tufts, and a faint block seam. Shared by the playfield + track beds.
+function drawGrassBlock(ctx, x, y, c) {
+  ctx.fillStyle = '#6CAB3C';
   ctx.fillRect(x, y, c, c);
+  // 2×2 checker shading
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  ctx.fillRect(x, y, c / 2, c / 2);
+  ctx.fillRect(x + c / 2, y + c / 2, c / 2, c / 2);
+  const u = c / 8;
+  ctx.fillStyle = '#7DC850';
+  [[1,1],[3,2],[6,1],[2,5],[5,4],[7,6],[4,6],[6,3]].forEach(([gx,gy]) =>
+    ctx.fillRect(x + gx*u, y + gy*u, u, u));
+  ctx.fillStyle = '#5E9A30';
+  [[2,2],[5,1],[1,4],[7,3],[3,7],[6,6]].forEach(([gx,gy]) =>
+    ctx.fillRect(x + gx*u, y + gy*u, u, u));
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, c - 1, c - 1);
+}
+
+function drawBed(ctx, x, y, c) {
+  drawGrassBlock(ctx, x, y, c);
 }
 
 function drawStraightH(ctx, x, y, c) {
   const mid = y + c / 2, W = c * W_FRAC;
   drawBed(ctx, x, y, c);
   // Ballast
-  ctx.fillStyle = '#BCAAA4';
+  ctx.fillStyle = '#7E5630';
   ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
   // Ties
-  ctx.fillStyle = '#6D4C41';
+  ctx.fillStyle = '#4A3019';
   for (let i = 0.07; i < 1; i += 0.19) {
     ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
   }
   // Rails
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 }
@@ -63,13 +83,13 @@ function drawStraightH(ctx, x, y, c) {
 function drawStraightV(ctx, x, y, c) {
   const mid = x + c / 2, W = c * W_FRAC;
   drawBed(ctx, x, y, c);
-  ctx.fillStyle = '#BCAAA4';
+  ctx.fillStyle = '#7E5630';
   ctx.fillRect(mid - W * 1.8, y, W * 3.6, c);
-  ctx.fillStyle = '#6D4C41';
+  ctx.fillStyle = '#4A3019';
   for (let i = 0.07; i < 1; i += 0.19) {
     ctx.fillRect(mid - W * 1.8, y + c * i, W * 3.6, c * 0.085);
   }
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(mid - W, y); ctx.lineTo(mid - W, y + c); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(mid + W, y); ctx.lineTo(mid + W, y + c); ctx.stroke();
 }
@@ -85,14 +105,14 @@ function drawCurve(ctx, x, y, c, cx, cy, aStart, aEnd, ccw) {
   ctx.beginPath(); ctx.rect(x, y, c, c); ctx.clip();
 
   // Ballast arc
-  ctx.strokeStyle = '#BCAAA4'; ctx.lineWidth = W * 3.6;
+  ctx.strokeStyle = '#7E5630'; ctx.lineWidth = W * 3.6;
   ctx.beginPath(); ctx.arc(cx, cy, R, aStart, aEnd, ccw); ctx.stroke();
 
   // Ties (6 evenly spaced crosspieces)
   let span = aEnd - aStart;
   if (ccw)  { if (span > 0)  span -= 2 * Math.PI; }
   else       { if (span < 0)  span += 2 * Math.PI; }
-  ctx.strokeStyle = '#6D4C41'; ctx.lineWidth = c * 0.07;
+  ctx.strokeStyle = '#4A3019'; ctx.lineWidth = c * 0.07;
   for (let i = 0; i <= 5; i++) {
     const a = aStart + span * (i / 5);
     ctx.beginPath();
@@ -102,7 +122,7 @@ function drawCurve(ctx, x, y, c, cx, cy, aStart, aEnd, ccw) {
   }
 
   // Rails
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.arc(cx, cy, R - W, aStart, aEnd, ccw); ctx.stroke();
   ctx.beginPath(); ctx.arc(cx, cy, R + W, aStart, aEnd, ccw); ctx.stroke();
 
@@ -139,13 +159,13 @@ function drawTunnel(ctx, x, y, c) {
   ctx.fill();
   // Re-draw track on top of mountain base (so rails are visible)
   const mid = y + c / 2;
-  ctx.fillStyle = '#BCAAA4';
+  ctx.fillStyle = '#7E5630';
   ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
-  ctx.fillStyle = '#6D4C41';
+  ctx.fillStyle = '#4A3019';
   for (let i = 0.07; i < 1; i += 0.19) {
     ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
   }
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
   // Tunnel mouth
@@ -202,7 +222,7 @@ function drawStation(ctx, x, y, c) {
 
   // Re-draw rails on top so they aren't obscured
   const mid = y + c / 2;
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 }
@@ -227,15 +247,15 @@ function drawCrossing(ctx, x, y, c) {
   ctx.fillRect(x + c * 0.35, y + c * 0.93,  c * 0.3, c * 0.07);
 
   // Ballast
-  ctx.fillStyle = '#BCAAA4';
+  ctx.fillStyle = '#7E5630';
   ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
   // Ties
-  ctx.fillStyle = '#6D4C41';
+  ctx.fillStyle = '#4A3019';
   for (let i = 0.07; i < 1; i += 0.19) {
     ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
   }
   // Rails
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 
@@ -273,18 +293,18 @@ function drawBridge(ctx, x, y, c) {
   ctx.fillRect(x + c * 0.1, mid + W * 1.8, c * 0.1, c * 0.5);
   ctx.fillRect(x + c * 0.8, mid + W * 1.8, c * 0.1, c * 0.5);
   // Arch
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 4;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 4;
   ctx.beginPath();
   ctx.arc(x + c / 2, mid + W * 1.8, c * 0.35, Math.PI, 0);
   ctx.stroke();
   // Bridge deck ballast + ties + rails (same as straight-h but at mid height)
-  ctx.fillStyle = '#BCAAA4';
+  ctx.fillStyle = '#7E5630';
   ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
-  ctx.fillStyle = '#6D4C41';
+  ctx.fillStyle = '#4A3019';
   for (let i = 0.07; i < 1; i += 0.19) {
     ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
   }
-  ctx.strokeStyle = '#757575'; ctx.lineWidth = 3;
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
 }

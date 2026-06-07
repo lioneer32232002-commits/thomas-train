@@ -57,14 +57,13 @@ function animLoop() {
     p.alpha = p.life / p.maxLife * 0.5;
   });
 
-  // Draw smoke
+  // Draw dust (blocky puffs)
   smokeParticles.forEach(p => {
     trainCtx.save();
     trainCtx.globalAlpha = p.alpha;
-    trainCtx.fillStyle = 'white';
-    trainCtx.beginPath();
-    trainCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-    trainCtx.fill();
+    trainCtx.fillStyle = '#D8C9A8';
+    const s = p.r * 2;
+    trainCtx.fillRect(p.x - p.r, p.y - p.r, s, s);
     trainCtx.restore();
   });
 
@@ -76,15 +75,14 @@ function animLoop() {
   const inTunnel = wp.special === 'tunnel';
   const onBridge = wp.special === 'bridge';
 
-  // Emit smoke
-  if (Math.random() < 0.3 && !inTunnel) {
-    const angle = wp.angle - Math.PI/2;
+  // Kick up a little dust behind the cart
+  if (Math.random() < 0.22 && !inTunnel) {
     smokeParticles.push({
-      x: wp.x + Math.cos(wp.angle)*18,
-      y: wp.y + Math.sin(wp.angle)*18,
-      vx: Math.cos(angle)*0.8 + (Math.random()-0.5)*0.5,
-      vy: Math.sin(angle)*0.8 - 0.8,
-      r: 4, life: 25, maxLife: 25, alpha: 0.5
+      x: wp.x - Math.cos(wp.angle)*18,
+      y: wp.y - Math.sin(wp.angle)*18,
+      vx: (Math.random()-0.5)*0.6,
+      vy: -0.5 - Math.random()*0.4,
+      r: 3, life: 20, maxLife: 20, alpha: 0.45
     });
   }
 
@@ -121,95 +119,68 @@ function animLoop() {
   animFrameId = requestAnimationFrame(animLoop);
 }
 
+// A blocky Minecraft minecart carrying a little dino. Forward = +x.
 function drawThomas(ctx, x, y, angle) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle);
 
-  const s = 1.0; // scale
-  ctx.scale(s, s);
+  const c  = (typeof cellSize === 'number' && cellSize) ? cellSize : 60;
+  const hw = c * 0.40;          // cart half-length
+  const hh = c * 0.24;          // cart half-height
+  const px = c / 16;            // "pixel" unit
+  const R  = (x0, y0, ww, hgt, col) => { ctx.fillStyle = col; ctx.fillRect(x0, y0, ww, hgt); };
 
-  // Body
-  ctx.fillStyle = '#1565C0';
+  // Ground shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
   ctx.beginPath();
-  ctx.roundRect(-28, -16, 56, 28, 5);
+  ctx.ellipse(0, hh + c * 0.16, hw * 1.05, c * 0.08, 0, 0, Math.PI * 2);
   ctx.fill();
-
-  // Cab top
-  ctx.fillStyle = '#1976D2';
-  ctx.fillRect(-10, -24, 24, 10);
-
-  // Chimney
-  ctx.fillStyle = '#333';
-  ctx.fillRect(12, -28, 8, 14);
-  ctx.fillStyle = '#555';
-  ctx.fillRect(10, -30, 12, 4);
-
-  // Boiler highlight
-  ctx.fillStyle = '#1E88E5';
-  ctx.beginPath();
-  ctx.ellipse(4, -12, 20, 7, 0, 0, Math.PI*2);
-  ctx.fill();
-
-  // Face panel
-  ctx.fillStyle = '#1976D2';
-  ctx.beginPath();
-  ctx.roundRect(14, -13, 16, 22, 3);
-  ctx.fill();
-
-  // Eyes
-  ctx.fillStyle = 'white';
-  ctx.beginPath(); ctx.ellipse(18, -7, 5, 5.5, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(26, -7, 5, 5.5, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = '#1565C0';
-  ctx.beginPath(); ctx.ellipse(19, -7, 3, 3.5, 0, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(27, -7, 3, 3.5, 0, 0, Math.PI*2); ctx.fill();
-  ctx.fillStyle = 'white';
-  ctx.beginPath(); ctx.arc(20, -8.5, 1.2, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(28, -8.5, 1.2, 0, Math.PI*2); ctx.fill();
-
-  // Smile
-  ctx.strokeStyle = '#FF8F00';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(22, -2, 5, 0.1, Math.PI - 0.1);
-  ctx.stroke();
-
-  // Number "1"
-  ctx.fillStyle = '#FFD700';
-  ctx.font = 'bold 9px Arial';
-  ctx.fillText('1', -6, 8);
 
   // Wheels
-  const wheelY = 14;
-  [-18, 0, 18].forEach(wx => {
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(wx, wheelY, 7, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#757575';
-    ctx.beginPath(); ctx.arc(wx, wheelY, 4.5, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#FFD700';
-    ctx.beginPath(); ctx.arc(wx, wheelY, 2, 0, Math.PI*2); ctx.fill();
-    // Spokes
-    ctx.strokeStyle = '#555';
-    ctx.lineWidth = 1;
-    for (let a = 0; a < Math.PI*2; a += Math.PI/3) {
-      ctx.beginPath();
-      ctx.moveTo(wx + 1.5*Math.cos(a), wheelY + 1.5*Math.sin(a));
-      ctx.lineTo(wx + 4*Math.cos(a), wheelY + 4*Math.sin(a));
-      ctx.stroke();
-    }
+  const wy = hh + px * 1.4;
+  [-hw * 0.62, hw * 0.62].forEach(wx => {
+    ctx.fillStyle = '#1A1A1A';
+    ctx.beginPath(); ctx.arc(wx, wy, c * 0.115, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8A8A8A';
+    ctx.beginPath(); ctx.arc(wx, wy, c * 0.045, 0, Math.PI * 2); ctx.fill();
   });
+  R(-hw * 0.62, wy - px * 0.4, hw * 1.24, px * 0.8, '#2A2A2A'); // axle bar
 
-  // Connecting rod
-  ctx.strokeStyle = '#FF6F00';
-  ctx.lineWidth = 2.5;
-  ctx.beginPath();
-  ctx.moveTo(-18, wheelY); ctx.lineTo(18, wheelY);
-  ctx.stroke();
+  // ── Dino rider (drawn before the cart's front wall so it sits "inside") ──
+  const G = '#5FA83C', GD = '#3B6B22', GL = '#7DC850';
+  // tail poking out the back
+  R(-hw - px * 1.2, -hh - px * 0.5, px * 2.4, px * 1.6, GD);
+  // body block down inside the cart
+  R(-px * 1.5, -hh - px * 1.2, px * 4, px * 3, G);
+  // neck
+  R(px * 0.6, -hh - px * 4.5, px * 2.6, px * 3.6, G);
+  // head
+  R(px * 1.2, -hh - px * 7.6, px * 4.6, px * 3.4, G);
+  R(px * 1.4, -hh - px * 7.4, px * 4.2, px * 0.8, GL);     // top highlight
+  ctx.strokeStyle = GD; ctx.lineWidth = Math.max(1, px * 0.35);
+  ctx.strokeRect(px * 1.2, -hh - px * 7.6, px * 4.6, px * 3.4);
+  // snout (forward +x)
+  R(px * 5.4, -hh - px * 6.3, px * 2.4, px * 2.0, G);
+  // eye
+  R(px * 3.4, -hh - px * 6.8, px * 1.3, px * 1.3, '#FFFFFF');
+  R(px * 3.9, -hh - px * 6.4, px * 0.7, px * 0.7, '#1A1A1A');
+  // teeth
+  R(px * 5.6, -hh - px * 4.4, px * 0.6, px * 0.7, '#FFFFFF');
+  R(px * 6.6, -hh - px * 4.4, px * 0.6, px * 0.7, '#FFFFFF');
+  // tiny arm
+  R(px * 4.4, -hh - px * 1.6, px * 1.2, px * 1.8, GD);
 
-  // Front buffer
-  ctx.fillStyle = '#FF6F00';
-  ctx.fillRect(26, -3, 5, 6);
+  // ── Iron minecart tub ───────────────────────────────────────────────────
+  R(-hw, -hh, hw * 2, hh * 2, '#6B6B6B');           // body
+  R(-hw, -hh, hw * 2, px * 0.9, '#9A9A9A');          // top rim highlight
+  R(-hw, hh - px * 0.9, hw * 2, px * 0.9, '#4F4F4F'); // bottom shade
+  R(-hw, -hh, px * 0.9, hh * 2, '#9A9A9A');          // left highlight
+  R(hw - px * 0.9, -hh, px * 0.9, hh * 2, '#4F4F4F'); // right shade
+  R(-hw + px * 0.9, -hh + px * 0.9, hw * 2 - px * 1.8, hh * 0.9, '#3F3F3F'); // inner cavity lip
+  // rivets
+  ctx.fillStyle = '#3A3A3A';
+  [-hw + px, hw - px * 1.8].forEach(rx => { ctx.fillRect(rx, hh - px * 1.8, px * 0.8, px * 0.8); });
 
   ctx.restore();
 }
@@ -219,46 +190,35 @@ function drawCarriage(ctx, x, y, angle, idx) {
   ctx.translate(x, y);
   ctx.rotate(angle);
 
-  const s = 0.90;
-  ctx.scale(s, s);
+  const c  = (typeof cellSize === 'number' && cellSize) ? cellSize : 60;
+  const hw = c * 0.36, hh = c * 0.22, px = c / 16;
+  const R = (x0, y0, ww, hgt, col) => { ctx.fillStyle = col; ctx.fillRect(x0, y0, ww, hgt); };
 
-  const color     = CARRIAGE_COLORS[idx % CARRIAGE_COLORS.length];
-  const roofColor = CARRIAGE_ROOF_COLORS[idx % CARRIAGE_ROOF_COLORS.length];
-
-  // Body
-  ctx.fillStyle = color;
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
   ctx.beginPath();
-  ctx.roundRect(-24, -12, 48, 22, 4);
+  ctx.ellipse(0, hh + c * 0.14, hw * 1.05, c * 0.07, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Roof
-  ctx.fillStyle = roofColor;
-  ctx.fillRect(-22, -17, 44, 6);
-
-  // Windows
-  ctx.fillStyle = '#B3E5FC';
-  [-11, 4].forEach(wx => {
-    ctx.fillRect(wx, -9, 9, 7);
-    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(wx, -9, 9, 7);
-  });
-
   // Wheels
-  const wheelY = 12;
-  [-12, 12].forEach(wx => {
-    ctx.fillStyle = '#333';
-    ctx.beginPath(); ctx.arc(wx, wheelY, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#757575';
-    ctx.beginPath(); ctx.arc(wx, wheelY, 3.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#FFD700';
-    ctx.beginPath(); ctx.arc(wx, wheelY, 1.5, 0, Math.PI * 2); ctx.fill();
+  const wy = hh + px * 1.3;
+  [-hw * 0.6, hw * 0.6].forEach(wx => {
+    ctx.fillStyle = '#1A1A1A';
+    ctx.beginPath(); ctx.arc(wx, wy, c * 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#8A8A8A';
+    ctx.beginPath(); ctx.arc(wx, wy, c * 0.04, 0, Math.PI * 2); ctx.fill();
   });
 
-  // Coupling hooks
-  ctx.fillStyle = '#555';
-  ctx.fillRect(-30, -2, 6, 4);
-  ctx.fillRect(24, -2, 6, 4);
+  // Wooden chest/crate cart
+  R(-hw, -hh, hw * 2, hh * 2, '#9A6B3B');             // crate body
+  R(-hw, -hh, hw * 2, px * 0.9, '#B98750');            // top highlight
+  R(-hw, hh - px * 0.9, hw * 2, px * 0.9, '#6E4A28');  // bottom shade
+  // plank seams
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  for (let i = 1; i < 4; i++) ctx.fillRect(-hw + (hw * 2) * i / 4 - px * 0.2, -hh, px * 0.4, hh * 2);
+  // iron band + latch
+  R(-hw, -px * 0.6, hw * 2, px * 1.2, '#5A5A5A');
+  R(-px * 0.8, -px * 1.4, px * 1.6, px * 2.8, '#C9A22A');
 
   ctx.restore();
 }
