@@ -92,7 +92,7 @@ window.addEventListener('DOMContentLoaded', () => {
   function resize() {
     const area = document.getElementById('main-area');
     const w = area.clientWidth, h = area.clientHeight;
-    cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
+    cellSize = Math.floor(Math.min(w / (COLS + 2), h / (ROWS + 1.8)));   // reserve margin for scenery
     drawOffsetX = Math.floor((w - COLS * cellSize) / 2);
     drawOffsetY = Math.floor((h - ROWS * cellSize) / 2);
     gridCanvas.width  = tCanvas.width  = w;
@@ -681,7 +681,7 @@ function startFreeMode() {
   // Resize/init
   const area = document.getElementById('main-area');
   const w = area.clientWidth, h = area.clientHeight;
-  cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
+  cellSize = Math.floor(Math.min(w / (COLS + 2), h / (ROWS + 1.8)));   // reserve margin for scenery
   drawOffsetX = Math.floor((w - COLS * cellSize) / 2);
   drawOffsetY = Math.floor((h - ROWS * cellSize) / 2);
   const gc = document.getElementById('grid-canvas');
@@ -738,7 +738,7 @@ function startLevel(id) {
   // Resize canvas and populate grid
   const area = document.getElementById('main-area');
   const w = area.clientWidth, h = area.clientHeight;
-  cellSize = Math.floor(Math.min(w / COLS, h / ROWS));
+  cellSize = Math.floor(Math.min(w / (COLS + 2), h / (ROWS + 1.8)));   // reserve margin for scenery
   applyLevelCentering(w, h, id);
   const gc = document.getElementById('grid-canvas');
   const tc = document.getElementById('train-canvas');
@@ -1326,9 +1326,6 @@ function redrawGrid() {
   // Blocky clouds — only when there's a real sky strip to put them in
   if (horizon > h * 0.12) drawWeatherClouds(gridCtx, w, horizon);
 
-  // Blocky biome skyline (trees, cacti, pines, volcano…) standing on the horizon
-  if (horizon > h * 0.10) drawBiomeScenery(gridCtx, w, horizon);
-
   // Biome-block ground, tiled and aligned to the play grid
   gridCtx.save();
   gridCtx.beginPath(); gridCtx.rect(0, horizon, w, h - horizon); gridCtx.clip();
@@ -1345,8 +1342,8 @@ function redrawGrid() {
   updateAmbient(w, h);
   drawAmbient(gridCtx, w, h);
 
-  // Dino decorations (blocky idle dinos in the margins)
-  drawDinos(gridCtx, w, h);
+  // Biome scenery + creatures filling the side margins (and sky band if any)
+  drawBiomeBackground(gridCtx, w, h);
 
   // Everything else is drawn relative to the centred grid origin
   gridCtx.save();
@@ -1587,44 +1584,107 @@ function startAmbientAnim() {
   if (ambientType !== 'none') weatherAnimId = requestAnimationFrame(loop);
 }
 
-// ── Biome scenery (blocky skyline props standing on the horizon) ──────────────
-function drawBiomeScenery(ctx, w, horizon) {
-  const baseY = horizon;
-  const u = Math.max(4, Math.round(horizon * 0.09));   // block unit
+// ── Biome background: fill the side margins (always visible) with blocky props
+//    and several creatures, plus a couple of props in the sky band when present.
+const SCENE_KINDS = {
+  plains:  ['tree', 'critter', 'bush', 'dino', 'tree', 'critter'],
+  desert:  ['cactus', 'critter', 'rock', 'dino', 'cactus', 'critter'],
+  snow:    ['pine', 'snowman', 'critter', 'dino', 'pine', 'critter'],
+  jungle:  ['jtree', 'critter', 'bird', 'dino', 'jtree', 'critter'],
+  volcano: ['volcano', 'rock', 'critter', 'dino', 'rock', 'critter'],
+};
+// Per-biome critter colours (so the little background animals match the climate)
+const CRITTER_COLORS = {
+  plains:  ['#5FA83C', '#3B6B22'], desert: ['#C9A24E', '#9A7A30'],
+  snow:    ['#FFFFFF', '#CBDBE7'], jungle: ['#E0533A', '#9E2E1C'],
+  volcano: ['#7A4A3A', '#3B231C'],
+};
+
+function drawBiomeBackground(ctx, w, h) {
+  const gridLeft  = drawOffsetX;
+  const gridRight = drawOffsetX + COLS * cellSize;
+  const baseY = h - Math.max(3, Math.round(h * 0.02));
+  const u = Math.max(5, Math.round(Math.min(w, h) * 0.05));
+  ctx.save();
+  if (gridLeft > u * 2.4)        _populateMargin(ctx, 0, gridLeft, baseY, u, 0);
+  if (w - gridRight > u * 2.4)   _populateMargin(ctx, gridRight, w, baseY, u, 1);
+  // A few props sitting up on the sky band when there's room above the grid
+  const horizon = Math.max(0, drawOffsetY);
+  if (horizon > h * 0.16) _skyProps(ctx, w, horizon, Math.max(4, Math.round(horizon * 0.08)));
+  ctx.restore();
+}
+
+function _populateMargin(ctx, x0, x1, baseY, u, side) {
+  const span = x1 - x0;
+  const slots = Math.max(2, Math.min(5, Math.floor(span / (u * 3.0))));
+  const kinds = SCENE_KINDS[activeBiome] || SCENE_KINDS.plains;
   const R = (x, y, ww, hh, col) => {
     ctx.fillStyle = col;
     ctx.fillRect(Math.round(x), Math.round(y), Math.round(ww), Math.round(hh));
   };
-  ctx.save();
-  const spots = [0.05, 0.19, 0.75, 0.92];   // x fractions, clear of the centre grid
-  switch (activeBiome) {
-    case 'desert':
-      spots.forEach((fx, i) => _propCactus(R, w*fx, baseY, u*(i%2 ? 0.85 : 1.15)));
-      _propSun(R, w*0.84, horizon*0.34, u*1.1);
-      _propCritter(R, w*0.27, baseY, u*0.8, '#C9A24E', '#9A7A30');
-      break;
-    case 'snow':
-      spots.forEach((fx, i) => _propPine(R, w*fx, baseY, u*(i%2 ? 0.9 : 1.2)));
-      _propCritter(R, w*0.30, baseY, u*0.8, '#FFFFFF', '#CBDBE7');
-      break;
-    case 'jungle':
-      spots.forEach((fx, i) => _propTree(R, w*fx, baseY, u*(i%2 ? 1.0 : 1.35), '#1F4D17', '#3F7F33'));
-      _propCritter(R, w*0.28, baseY, u*0.9, '#E0533A', '#9E2E1C');   // little red dino
-      _propBird(R, w*0.70, horizon*0.5, u*0.7);
-      break;
-    case 'volcano':
-      _propVolcano(R, w*0.09, baseY, u*1.6);
-      _propVolcano(R, w*0.89, baseY, u*1.2);
-      _propRock(R, w*0.22, baseY, u);
-      _propRock(R, w*0.77, baseY, u*0.8);
-      break;
-    default: // plains
-      spots.forEach((fx, i) => _propTree(R, w*fx, baseY, u*(i%2 ? 0.95 : 1.25), '#3B6B22', '#5FA83C'));
-      _propBush(R, w*0.30, baseY, u);
-      _propCritter(R, w*0.70, baseY, u*0.85, '#5FA83C', '#3B6B22');
-      break;
+  for (let i = 0; i < slots; i++) {
+    const x = x0 + span * (i + 0.5) / slots;
+    const seed = i + side * 3;
+    const size = u * ((seed % 2 === 0) ? 1.15 : 0.85);
+    _biomeItem(ctx, R, kinds[seed % kinds.length], x, baseY, size, side);
   }
+}
+
+function _biomeItem(ctx, R, kind, x, baseY, u, side) {
+  const cc = CRITTER_COLORS[activeBiome] || CRITTER_COLORS.plains;
+  switch (kind) {
+    case 'tree':    _propTree(R, x, baseY, u, '#3B6B22', '#5FA83C'); break;
+    case 'jtree':   _propTree(R, x, baseY, u, '#1F4D17', '#3F7F33'); break;
+    case 'bush':    _propBush(R, x, baseY, u); break;
+    case 'cactus':  _propCactus(R, x, baseY, u); break;
+    case 'pine':    _propPine(R, x, baseY, u); break;
+    case 'snowman': _propSnowman(R, x, baseY, u); break;
+    case 'volcano': _propVolcano(R, x, baseY, u * 1.3); break;
+    case 'rock':    _propRock(R, x, baseY, u); break;
+    case 'bird':    _propBird(R, x, baseY - u * 2.2, u); break;
+    case 'critter': _propCritter(R, x, baseY, u, cc[0], cc[1]); break;
+    case 'dino':    _bigCreature(ctx, x, baseY, u, side); break;
+  }
+}
+
+// A big blocky idle dino (one of the 4 species), biome-flavoured, facing inward
+function _bigCreature(ctx, x, baseY, u, side) {
+  if (typeof DINO_TYPES === 'undefined') return;
+  const S = u * 2.6;
+  const lvl = (typeof currentLevelId === 'number' ? currentLevelId : 1);
+  const idx = (lvl + Math.round(x)) % DINO_TYPES.length;
+  ctx.save();
+  ctx.translate(x, baseY - S * 0.02);
+  if (side === 1) ctx.scale(-1, 1);   // right-margin creatures face left
+  try { DINO_TYPES[idx].draw(ctx, S, 0, 0); } catch (e) {}
   ctx.restore();
+}
+
+function _skyProps(ctx, w, horizon, u) {
+  const R = (x, y, ww, hh, col) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(ww), Math.round(hh));
+  };
+  if (activeBiome === 'desert') _propSun(R, w * 0.85, horizon * 0.34, u * 1.2);
+  if (activeBiome === 'jungle') _propBird(R, w * 0.5, horizon * 0.5, u);
+  if (activeBiome === 'volcano') _propVolcano(R, w * 0.5, horizon, u * 1.1);
+}
+
+function _propSnowman(R, x, baseY, u) {
+  R(x - u*0.9,  baseY - u*1.7, u*1.8, u*1.7, '#FFFFFF');   // bottom ball
+  R(x - u*0.65, baseY - u*3.0, u*1.3, u*1.3, '#FFFFFF');   // middle
+  R(x - u*0.45, baseY - u*4.0, u*0.9, u*1.0, '#FFFFFF');   // head
+  R(x - u*0.9,  baseY - u*0.4, u*1.8, u*0.4, '#DCEBF5');   // shaded base
+  // coal eyes + buttons
+  R(x - u*0.22, baseY - u*3.75, u*0.18, u*0.18, '#1A1A1A');
+  R(x + u*0.06, baseY - u*3.75, u*0.18, u*0.18, '#1A1A1A');
+  R(x - u*0.08, baseY - u*2.9,  u*0.16, u*0.16, '#1A1A1A');
+  R(x - u*0.08, baseY - u*2.45, u*0.16, u*0.16, '#1A1A1A');
+  // carrot nose
+  R(x + u*0.05, baseY - u*3.5, u*0.5, u*0.16, '#FF7A30');
+  // top hat
+  R(x - u*0.6, baseY - u*4.5, u*1.2, u*0.3, '#1A1A1A');
+  R(x - u*0.4, baseY - u*5.1, u*0.8, u*0.7, '#1A1A1A');
 }
 
 function _propTree(R, x, baseY, u, dark, light) {
@@ -1691,28 +1751,6 @@ function _propCritter(R, x, baseY, u, col, colD) {
   R(x + u*0.4, baseY - u*0.2, u*0.3, u*0.4, colD);
   R(x + u*1.05, baseY - u*1.25, u*0.18, u*0.18, '#1A1A1A'); // eye
 }
-
-// ── Dino decorations ──────────────────────────────────────────────────────────
-function drawDinos(ctx, w, h) {
-  if (typeof DINO_TYPES === 'undefined') return;
-  const S = Math.round(Math.min(w, h) * 0.12);
-  const lvl = (typeof currentLevelId === 'number' ? currentLevelId : 1);
-  const groundY = h - S * 0.7;
-  const rightMargin = w - (drawOffsetX + COLS * cellSize);
-  // Left margin idle dino (faces right)
-  if (drawOffsetX > S * 0.9) {
-    ctx.save(); ctx.translate(drawOffsetX * 0.5, groundY);
-    DINO_TYPES[lvl % DINO_TYPES.length].draw(ctx, S, 0, 0);
-    ctx.restore();
-  }
-  // Right margin idle dino (faces left)
-  if (rightMargin > S * 0.9) {
-    ctx.save(); ctx.translate(w - rightMargin * 0.5, groundY); ctx.scale(-1, 1);
-    DINO_TYPES[(lvl + 1) % DINO_TYPES.length].draw(ctx, S * 1.05, 0, 0);
-    ctx.restore();
-  }
-}
-
 
 // ── Dino event ────────────────────────────────────────────────────────────────
 

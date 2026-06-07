@@ -616,25 +616,30 @@ img, canvas { image-rendering: pixelated; }
   justify-content: center;
   flex: 1;
 }
-/* Tool buttons — hot-bar slots */
+/* Tool buttons — hot-bar slots.
+   Light "birch plank" face so the brown/grey track icons read clearly
+   (the old brown dirt face blended into the brown rail icons). */
 .tool-btn {
   display: flex; flex-direction: column; align-items: center;
-  background: var(--mc-dirt);
-  border: 3px solid var(--mc-dirt-dk);
+  background: linear-gradient(180deg, #F0E4C8 0%, #D8C49A 100%);
+  border: 3px solid var(--mc-wood-dk);
   padding: 6px 8px;
   cursor: pointer; transition: transform 0.12s;
-  font-size: 1rem; color: #fff;
+  font-size: 1rem; color: #3A2A18; font-weight: bold;
   min-width: 70px;
-  text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+  text-shadow: 1px 1px 0 rgba(255,255,255,0.4);
 }
 .tool-btn svg { width: 54px; height: 54px; }
-.tool-btn:hover { transform: scale(1.07) translateY(-2px); filter: brightness(1.12); }
+.tool-btn:hover { transform: scale(1.07) translateY(-2px); filter: brightness(1.06); }
 .tool-btn.active {
   border-color: var(--mc-gold);
-  background: var(--mc-grass);
+  background: linear-gradient(180deg, #FFE9A6 0%, #FFD24A 100%);
   box-shadow: inset 3px 3px 0 var(--bevel-lt), inset -3px -3px 0 var(--bevel-dk), 0 0 0 3px var(--mc-gold);
 }
-.tool-btn.special { border-color: #6A3AA0; background: #5B3A7A; }
+.tool-btn.special {
+  border-color: #6A3AA0; background: #5B3A7A;
+  color: #fff; text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+}
 .tool-btn.special.active { border-color: var(--mc-diamond); box-shadow: inset 3px 3px 0 var(--bevel-lt), inset -3px -3px 0 var(--bevel-dk), 0 0 0 3px var(--mc-diamond); }
 .tool-btn span { margin-top: 3px; }
 
