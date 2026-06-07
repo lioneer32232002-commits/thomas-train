@@ -19,6 +19,7 @@ const TRACK_DEFS = {
   'bridge':     { connects: ['W','E'], draw: drawBridge,   special: 'bridge' },
   'station':    { connects: ['W','E'], draw: drawStation,  special: 'station' },
   'crossing':   { connects: ['W','E'], draw: drawCrossing, special: 'crossing' },
+  'cross':      { connects: ['N','S','E','W'], draw: drawCross },
 };
 
 let grid = {};
@@ -38,29 +39,50 @@ function clearGrid() { grid = {}; }
 
 const W_FRAC = 0.12; // half-gauge as fraction of c
 
-// A single Minecraft-style grass block (top view): green base, checker shading,
-// pixel grass tufts, and a faint block seam. Shared by the playfield + track beds.
-function drawGrassBlock(ctx, x, y, c) {
-  ctx.fillStyle = '#6CAB3C';
+// ── Biomes ───────────────────────────────────────────────────────────────────
+// Each level group is set in a different climate. The biome drives the ground
+// blocks, sky, clouds, ambient particles and background scenery.
+let activeBiome = 'plains';
+const BIOMES = {
+  plains:  { sky:['#87CEEB','#B8E4F9'], base:'#6CAB3C', tuftL:'#7DC850', tuftD:'#5E9A30', dirt:'#5C3E2A', cloud:'#FFFFFF', ambient:'none'   },
+  desert:  { sky:['#E8BE78','#F7E3B0'], base:'#E3C079', tuftL:'#EFD79A', tuftD:'#C9A24E', dirt:'#A07C3E', cloud:'#FBEFD0', ambient:'none'   },
+  snow:    { sky:['#A9C7DD','#DCEBF5'], base:'#EAF2F7', tuftL:'#FFFFFF', tuftD:'#CBDBE7', dirt:'#9DB0BC', cloud:'#FFFFFF', ambient:'snow'   },
+  jungle:  { sky:['#86C079','#BCE0A8'], base:'#3F7F33', tuftL:'#5FB04C', tuftD:'#2C5E22', dirt:'#3E2C18', cloud:'#E8F5DD', ambient:'leaves' },
+  volcano: { sky:['#6E4040','#9A6450'], base:'#4A3B38', tuftL:'#6B4A40', tuftD:'#2A1F1D', dirt:'#241A18', cloud:'#7A5A50', glow:'#FF7A30', ambient:'ember' },
+};
+function getBiome() { return BIOMES[activeBiome] || BIOMES.plains; }
+
+// A single Minecraft-style ground block (top view): biome base colour, checker
+// shading, pixel tufts, and a faint block seam. Shared by the playfield + track beds.
+function drawGroundBlock(ctx, x, y, c) {
+  const b = getBiome();
+  ctx.fillStyle = b.base;
   ctx.fillRect(x, y, c, c);
   // 2×2 checker shading
   ctx.fillStyle = 'rgba(0,0,0,0.06)';
   ctx.fillRect(x, y, c / 2, c / 2);
   ctx.fillRect(x + c / 2, y + c / 2, c / 2, c / 2);
   const u = c / 8;
-  ctx.fillStyle = '#7DC850';
+  ctx.fillStyle = b.tuftL;
   [[1,1],[3,2],[6,1],[2,5],[5,4],[7,6],[4,6],[6,3]].forEach(([gx,gy]) =>
     ctx.fillRect(x + gx*u, y + gy*u, u, u));
-  ctx.fillStyle = '#5E9A30';
+  ctx.fillStyle = b.tuftD;
   [[2,2],[5,1],[1,4],[7,3],[3,7],[6,6]].forEach(([gx,gy]) =>
     ctx.fillRect(x + gx*u, y + gy*u, u, u));
+  // Volcano: a couple of glowing ember specks per block
+  if (b.glow) {
+    ctx.fillStyle = b.glow;
+    [[4,2],[1,6]].forEach(([gx,gy]) => ctx.fillRect(x + gx*u, y + gy*u, u, u));
+  }
   ctx.strokeStyle = 'rgba(0,0,0,0.12)';
   ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, y + 0.5, c - 1, c - 1);
 }
+// Back-compat alias (some callers still say grass)
+function drawGrassBlock(ctx, x, y, c) { drawGroundBlock(ctx, x, y, c); }
 
 function drawBed(ctx, x, y, c) {
-  drawGrassBlock(ctx, x, y, c);
+  drawGroundBlock(ctx, x, y, c);
 }
 
 function drawStraightH(ctx, x, y, c) {
@@ -92,6 +114,29 @@ function drawStraightV(ctx, x, y, c) {
   ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
   ctx.beginPath(); ctx.moveTo(mid - W, y); ctx.lineTo(mid - W, y + c); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(mid + W, y); ctx.lineTo(mid + W, y + c); ctx.stroke();
+}
+
+// A 4-way crossing where two straight rails intersect (lets tracks make a
+// figure-8 — the cart passes straight through on each axis).
+function drawCross(ctx, x, y, c) {
+  const mid = y + c / 2, midx = x + c / 2, W = c * W_FRAC;
+  drawBed(ctx, x, y, c);
+  // Ballast both ways
+  ctx.fillStyle = '#7E5630';
+  ctx.fillRect(x, mid - W * 1.8, c, W * 3.6);
+  ctx.fillRect(midx - W * 1.8, y, W * 3.6, c);
+  // Ties both ways
+  ctx.fillStyle = '#4A3019';
+  for (let i = 0.07; i < 1; i += 0.19) {
+    ctx.fillRect(x + c * i, mid - W * 1.8, c * 0.085, W * 3.6);
+    ctx.fillRect(midx - W * 1.8, y + c * i, W * 3.6, c * 0.085);
+  }
+  // Rails both ways
+  ctx.strokeStyle = '#C8C8C8'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, mid - W); ctx.lineTo(x + c, mid - W); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x, mid + W); ctx.lineTo(x + c, mid + W); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(midx - W, y); ctx.lineTo(midx - W, y + c); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(midx + W, y); ctx.lineTo(midx + W, y + c); ctx.stroke();
 }
 
 // Unified curve drawer
@@ -338,16 +383,38 @@ function validateTrack() {
     }
   }
 
-  // DFS from first cell, look for loop
-  const [sr,sc] = cells[0];
-  const visited = new Set();
+  // DFS looking for a single closed loop. A 'cross' cell may be entered twice
+  // (once per axis) and is always passed straight through — that's what lets a
+  // figure-8 close as one loop.
+  const isCross = (r, c) => getCell(r, c)?.type === 'cross';
+  const axisOf  = d => (d === 'E' || d === 'W') ? 'H' : 'V';
+
+  // Start from a non-cross cell so the closed-loop test fires only on a full lap.
+  const start = cells.find(([r, c]) => !isCross(r, c)) || cells[0];
+  const [sr, sc] = start;
+  const visited   = new Set();   // non-cross cells visited
+  const crossUsed = {};          // key -> Set of axes already used
   const path = [];
 
   function dfs(r, c, fromDir) {
-    const k = key(r,c);
+    const k = key(r, c);
     if (path.length > 1 && r === sr && c === sc) return true; // closed loop
+
+    if (isCross(r, c)) {
+      const ax = axisOf(fromDir);
+      const used = crossUsed[k] || (crossUsed[k] = new Set());
+      if (used.has(ax)) return false;          // already crossed on this axis
+      // Must continue straight through (same travel direction).
+      const straight = adj[k].find(nb => nb.dir === fromDir);
+      if (!straight) return false;
+      used.add(ax); path.push([r, c]);
+      if (dfs(straight.r, straight.c, straight.dir)) return true;
+      used.delete(ax); path.pop();
+      return false;
+    }
+
     if (visited.has(k)) return false;
-    visited.add(k); path.push([r,c]);
+    visited.add(k); path.push([r, c]);
     for (const nb of adj[k]) {
       if (nb.dir === opposite(fromDir)) continue;
       if (dfs(nb.r, nb.c, nb.dir)) return true;
@@ -356,9 +423,10 @@ function validateTrack() {
     return false;
   }
 
-  for (const nb of (adj[key(sr,sc)] || [])) {
+  for (const nb of (adj[key(sr, sc)] || [])) {
     path.length = 0; visited.clear();
-    path.push([sr,sc]); visited.add(key(sr,sc));
+    for (const kk in crossUsed) delete crossUsed[kk];
+    path.push([sr, sc]); visited.add(key(sr, sc));
     if (dfs(nb.r, nb.c, nb.dir)) return { valid: true, path: [...path] };
   }
   return { valid: false, reason: 'no-loop', path: null };
@@ -435,6 +503,21 @@ function buildAnimPath(loopPath, cellSize) {
       for (let t = 0; t <= S; t++) {
         const frac = goDown ? t/S : 1 - t/S;
         pts.push({ x: px + c/2, y: py + c*frac, angle: goDown ? Math.PI/2 : -Math.PI/2, special: null });
+      }
+    } else if (type === 'cross') {
+      // Straight pass-through; axis chosen by the travel direction of this visit.
+      if (exitDir === 'E' || exitDir === 'W') {
+        const goRight = (exitDir === 'E');
+        for (let t = 0; t <= S; t++) {
+          const frac = goRight ? t/S : 1 - t/S;
+          pts.push({ x: px + c*frac, y: mid, angle: goRight ? 0 : Math.PI, special: null });
+        }
+      } else {
+        const goDown = (exitDir === 'S');
+        for (let t = 0; t <= S; t++) {
+          const frac = goDown ? t/S : 1 - t/S;
+          pts.push({ x: px + c/2, y: py + c*frac, angle: goDown ? Math.PI/2 : -Math.PI/2, special: null });
+        }
       }
     } else {
       const cp = CURVE_PARAMS[type]?.[entryDir];

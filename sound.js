@@ -127,6 +127,32 @@ function playError() {
   });
 }
 
+// ── 蛋孵化（蛋殼裂開 + 可愛上行小鈴聲）────────────────────────────────────────
+function _playHatch() {
+  try {
+    const ctx = getAudioCtx();
+    // 蛋殼裂開的短噪音
+    const len = Math.floor(ctx.sampleRate * 0.08);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2) * 0.5;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1200;
+    src.connect(hp); hp.connect(ctx.destination); src.start(ctx.currentTime);
+    // 上行三音小鈴聲
+    [660, 880, 1175].forEach((f, i) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination); o.type = 'sine';
+      const t = ctx.currentTime + 0.05 + i * 0.08;
+      o.frequency.setValueAtTime(f, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      o.start(t); o.stop(t + 0.2);
+    });
+  } catch (e) {}
+}
+
 // ── 持續運行音（間隔呼叫 playChugChug）─────────────────────────────────────
 let chugInterval = null;
 function startChugSound() {

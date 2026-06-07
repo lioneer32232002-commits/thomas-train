@@ -11,17 +11,22 @@ let toolbarGhostEl = null;
 let isRunning = false;
 let gridCanvas, gridCtx;
 
-// ── Weather ────────────────────────────────────────────────────────────────────
-let weatherSky = ['#87CEEB','#B8E4F9']; // default sunny
-let weatherType = 'sunny';
-
-const WEATHER_CONFIGS = {
-  sunny:  { sky: ['#87CEEB','#B8E4F9'], rainChance: 0 },
-  cloudy: { sky: ['#B0BEC5','#CFD8DC'], rainChance: 0 },
-  rainy:  { sky: ['#78909C','#B0BEC5'], rainChance: 1 },
-};
-let rainParticles = [];
+// ── Biome / ambient ─────────────────────────────────────────────────────────
+let weatherSky = ['#87CEEB','#B8E4F9']; // current sky gradient (set from biome)
+let ambientType = 'none';               // 'none'|'snow'|'leaves'|'ember'
+let ambientParticles = [];
 let weatherAnimId = null;
+
+// Each difficulty group lives in its own climate.
+const BIOME_BY_GROUP = { 1:'plains', 2:'desert', 3:'snow', 4:'jungle', 5:'volcano' };
+
+function applyBiome(group) {
+  activeBiome = BIOME_BY_GROUP[group] || 'plains';
+  const b = getBiome();
+  weatherSky = b.sky;
+  ambientType = b.ambient || 'none';
+  ambientParticles = [];
+}
 
 // ── Mode state ────────────────────────────────────────────────────────────────
 let gameMode = 'select';   // 'select' | 'level' | 'free'
@@ -42,6 +47,7 @@ let dinoLoop_path = [];
 
 let dinoStomps  = [];
 let brokenCells = new Set();
+let dinoDebris  = [];   // flying voxel chunks from smashed rails
 
 let dinoAnimId  = null;
 let _dinoWalkerImg = null;
@@ -256,6 +262,14 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-clear').addEventListener('click', handleClear);
   document.getElementById('btn-back').addEventListener('click', exitToSelect);
   document.getElementById('btn-free-mode').addEventListener('click', startFreeMode);
+  document.getElementById('btn-dino-dex').addEventListener('click', showDinoDex);
+  document.getElementById('dex-close').addEventListener('click', () => {
+    document.getElementById('dex-overlay').style.display = 'none';
+  });
+  document.getElementById('btn-stickers').addEventListener('click', showStickerWall);
+  document.getElementById('sticker-close').addEventListener('click', () => {
+    document.getElementById('sticker-overlay').style.display = 'none';
+  });
   document.getElementById('message-close').addEventListener('click', () => {
     document.getElementById('message-overlay').style.display = 'none';
     if (messageMode === 'confirm') {
@@ -676,8 +690,9 @@ function startFreeMode() {
   gc.style.width = tc.style.width = w + 'px';
   gc.style.height = tc.style.height = h + 'px';
   initGrid(COLS, ROWS);
+  applyBiome(1);   // Creative mode → sunny plains
   redrawGrid();
-  startWeatherAnim();
+  startAmbientAnim();
 }
 
 function startLevel(id) {
@@ -733,11 +748,11 @@ function startLevel(id) {
 
   initGrid(COLS, ROWS);
   reloadLevelGrid();
-  randomWeather();
+  applyBiome(level.group);
   redrawGrid();
   updateGapOverlay();
   updateHintBtn();
-  startWeatherAnim();
+  startAmbientAnim();
 
   // Show hint desc
   showDesc(level.desc);
@@ -858,9 +873,9 @@ function showLevelComplete(levelId) {
   const totalScore = getScore();
   const maxScore = getMaxScore();
 
-  document.getElementById('message-icon').textContent = '🎉';
+  document.getElementById('message-icon').textContent = _stickerFor(levelId);
   document.getElementById('message-text').textContent =
-    `Level ${levelId} Complete! 🦖\n+${earned} pts! ⭐\nTotal: ${totalScore} / ${maxScore}`;
+    `Level ${levelId} Complete! 🦖\n+${earned} pts! ⭐\n🏆 New sticker: ${_stickerFor(levelId)}\nTotal: ${totalScore} / ${maxScore}`;
 
   document.getElementById('message-close').textContent = 'Back to Levels';
   const nextBtn = document.getElementById('message-next');
@@ -961,6 +976,14 @@ function getGapHintSVG(type) {
       <line x1="0" y1="16" x2="50" y2="16" stroke="#555" stroke-width="2.5"/>
       <line x1="0" y1="34" x2="50" y2="34" stroke="#555" stroke-width="2.5"/>
     </svg>`,
+    'cross': `<svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="20" width="50" height="10" fill="#BCAAA4"/>
+      <rect x="20" y="0" width="10" height="50" fill="#BCAAA4"/>
+      <line x1="0" y1="18" x2="50" y2="18" stroke="#757575" stroke-width="3"/>
+      <line x1="0" y1="32" x2="50" y2="32" stroke="#757575" stroke-width="3"/>
+      <line x1="18" y1="0" x2="18" y2="50" stroke="#757575" stroke-width="3"/>
+      <line x1="32" y1="0" x2="32" y2="50" stroke="#757575" stroke-width="3"/>
+    </svg>`,
   };
   return svgs[type] || svgs['straight-h'];
 }
@@ -983,7 +1006,7 @@ function updateGapOverlay() {
     if (!neededKeys.has(el.dataset.key)) el.remove();
   });
 
-  const SPECIAL_TYPES = new Set(['tunnel', 'bridge', 'station', 'crossing']);
+  const SPECIAL_TYPES = new Set(['tunnel', 'bridge', 'station', 'crossing', 'cross']);
 
   // Create/update
   levelGaps.forEach(g => {
@@ -1094,7 +1117,7 @@ function createProfile(name, avatar) {
   const s = _loadStore();
   if (s.profiles.length >= MAX_PROFILES) return null;
   const id = 'p' + Date.now();
-  s.profiles.push({ id, name: name.trim().slice(0, 10), avatar: avatar || '🦖', completed: [], dinoLevels: [] });
+  s.profiles.push({ id, name: name.trim().slice(0, 10), avatar: avatar || '🦖', completed: [], dinoLevels: [], dinoDex: [] });
   s.currentId = id;
   _saveStore(s);
   return id;
@@ -1108,8 +1131,111 @@ function deleteProfile(id) {
 function resetCurrentProfile() {
   const s = _loadStore();
   const p = s.profiles.find(pr => pr.id === s.currentId);
-  if (p) { p.completed = []; p.dinoLevels = []; }
+  if (p) { p.completed = []; p.dinoLevels = []; p.dinoDex = []; }
   _saveStore(s);
+}
+
+// ── Dino Dex (collect each species you meet) ──────────────────────────────────
+function getDinoDex() {
+  const p = getCurrentProfile();
+  return new Set((p && p.dinoDex) || []);
+}
+function _recordDinoSeen(key) {
+  const s = _loadStore();
+  const p = s.profiles.find(pr => pr.id === s.currentId);
+  if (!p) return false;
+  if (!p.dinoDex) p.dinoDex = [];
+  if (p.dinoDex.includes(key)) return false;
+  p.dinoDex.push(key);
+  _saveStore(s);
+  return true;
+}
+function _showDinoDiscovered() {
+  const dino = DINO_TYPES.find(d => d.key === (currentDino && currentDino.key)) || currentDino;
+  if (!dino) return;
+  const dex = getDinoDex();
+  const all = DINO_TYPES.every(d => dex.has(d.key));
+  showDesc(all
+    ? `🏆 ${dino.name} added — Dino Dex COMPLETE!`
+    : `📖 New dino! ${dino.name} added to your Dex (${dex.size}/${DINO_TYPES.length})`);
+  try { _playSpeciesRoar(dino.key); } catch (e) {}
+}
+
+function _drawDexPortrait(ctx, w, h, dino, locked) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.save();
+  const S = Math.min(w, h) * 0.40;
+  ctx.translate(w * 0.52, h * 0.74);
+  try { dino.draw(ctx, S, 0, 0); } catch (e) {}
+  ctx.restore();
+  if (locked) {
+    // Recolour every drawn pixel into a dark silhouette
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = '#2f2f3a';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+    ctx.fillStyle = '#FCD63F';
+    ctx.font = `bold ${Math.round(h * 0.34)}px 'Press Start 2P', monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('?', w * 0.52, h * 0.55);
+  }
+}
+
+function showDinoDex() {
+  const dex = getDinoDex();
+  const wrap = document.getElementById('dex-cards');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  DINO_TYPES.forEach(d => {
+    const unlocked = dex.has(d.key);
+    const card = document.createElement('div');
+    card.className = 'collect-card ' + (unlocked ? 'unlocked' : 'locked');
+    const cv = document.createElement('canvas');
+    cv.width = 150; cv.height = 120; cv.className = 'dex-portrait';
+    card.appendChild(cv);
+    const name = document.createElement('div');
+    name.className = 'collect-name';
+    name.textContent = unlocked ? d.name : '? ? ?';
+    card.appendChild(name);
+    wrap.appendChild(card);
+    _drawDexPortrait(cv.getContext('2d'), cv.width, cv.height, d, !unlocked);
+    if (unlocked) {
+      card.title = 'Tap to hear its roar!';
+      card.addEventListener('click', () => { try { _playSpeciesRoar(d.key); } catch (e) {} });
+    }
+  });
+  const all = DINO_TYPES.every(d => dex.has(d.key));
+  document.getElementById('dex-progress').textContent =
+    all ? '🎉 All dinos collected — Dino Master!' : `Collected ${dex.size} / ${DINO_TYPES.length} — tap a dino to hear it!`;
+  document.getElementById('dex-overlay').style.display = 'flex';
+}
+
+// ── Sticker wall (one fun sticker per completed level) ────────────────────────
+const STICKERS = [
+  '🦖','🦕','🥚','🦴','🌋','❄️','🌴','🌵','⭐','🌟',
+  '🍃','🦎','🐉','🪨','🏔️','🌺','🦅','🌞','🍀','💎',
+  '🦣','🐲','🥇','👑','🏆',
+];
+function _stickerFor(id) { return STICKERS[(id - 1) % STICKERS.length]; }
+
+function showStickerWall() {
+  const progress = getLevelProgress();
+  const grid = document.getElementById('sticker-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  LEVELS.forEach(l => {
+    const earned = progress.completed.has(l.id);
+    const cell = document.createElement('div');
+    cell.className = 'sticker-slot ' + (earned ? 'earned' : 'locked');
+    cell.textContent = earned ? _stickerFor(l.id) : '🔒';
+    cell.title = earned ? `Level ${l.id}` : `Level ${l.id} — not done yet`;
+    grid.appendChild(cell);
+  });
+  const done = progress.completed.size;
+  document.getElementById('sticker-progress').textContent =
+    done >= LEVELS.length ? '🌟 Full wall! Every sticker earned!' : `${done} / ${LEVELS.length} stickers earned`;
+  document.getElementById('sticker-overlay').style.display = 'flex';
 }
 
 // ── Progress storage ──────────────────────────────────────────────────────────
@@ -1200,21 +1326,24 @@ function redrawGrid() {
   // Blocky clouds — only when there's a real sky strip to put them in
   if (horizon > h * 0.12) drawWeatherClouds(gridCtx, w, horizon);
 
-  // Grass-block ground, tiled and aligned to the play grid
+  // Blocky biome skyline (trees, cacti, pines, volcano…) standing on the horizon
+  if (horizon > h * 0.10) drawBiomeScenery(gridCtx, w, horizon);
+
+  // Biome-block ground, tiled and aligned to the play grid
   gridCtx.save();
   gridCtx.beginPath(); gridCtx.rect(0, horizon, w, h - horizon); gridCtx.clip();
   const ax = ((drawOffsetX % c) + c) % c;
   const ay = ((drawOffsetY % c) + c) % c;
   for (let gy = ay - c; gy < h; gy += c)
     for (let gx = ax - c; gx < w; gx += c)
-      drawGrassBlock(gridCtx, gx, gy, c);
-  // dirt rim right under the grass horizon
+      drawGroundBlock(gridCtx, gx, gy, c);
+  // dirt rim right under the horizon
   gridCtx.fillStyle = 'rgba(92,62,42,0.25)';
   gridCtx.fillRect(0, horizon, w, Math.max(2, Math.floor(c * 0.06)));
   gridCtx.restore();
 
-  updateRain(w, h);
-  drawRain(gridCtx, w, h);
+  updateAmbient(w, h);
+  drawAmbient(gridCtx, w, h);
 
   // Dino decorations (blocky idle dinos in the margins)
   drawDinos(gridCtx, w, h);
@@ -1366,49 +1495,61 @@ function launchStars() {
   }
 }
 
-// ── Weather functions ─────────────────────────────────────────────────────────
-function setWeather(type) {
-  weatherType = type;
-  const cfg = WEATHER_CONFIGS[type] || WEATHER_CONFIGS.sunny;
-  weatherSky = cfg.sky;
-  rainParticles = [];
-}
-
-function randomWeather() {
-  const roll = Math.random();
-  if (roll < 0.6) setWeather('sunny');
-  else if (roll < 0.85) setWeather('cloudy');
-  else setWeather('rainy');
-}
-
-function updateRain(w, h) {
-  if (weatherType !== 'rainy') return;
-  // Spawn new drops
-  while (rainParticles.length < 120) {
-    rainParticles.push({ x: Math.random()*w, y: Math.random()*h*0.4 - h*0.4, speed: 4+Math.random()*5, len: 8+Math.random()*10 });
+// ── Ambient particles (biome-driven: snow / leaves / embers) ──────────────────
+function updateAmbient(w, h) {
+  if (ambientType === 'none') return;
+  const cap = ambientType === 'ember' ? 70 : 110;
+  while (ambientParticles.length < cap) {
+    if (ambientType === 'ember') {
+      ambientParticles.push({ x: Math.random()*w, y: h*0.5 + Math.random()*h*0.5,
+        vx: (Math.random()-0.5)*0.5, vy: -(0.6+Math.random()*1.4),
+        s: 2+Math.random()*3, life: 1 });
+    } else if (ambientType === 'snow') {
+      ambientParticles.push({ x: Math.random()*w, y: -10 - Math.random()*h*0.3,
+        vx: (Math.random()-0.5)*0.5, vy: 1+Math.random()*1.5,
+        s: 2+Math.random()*3, sway: Math.random()*Math.PI*2 });
+    } else { // leaves
+      ambientParticles.push({ x: Math.random()*w, y: -10 - Math.random()*h*0.3,
+        vx: (Math.random()-0.5)*0.9, vy: 0.8+Math.random()*1.3,
+        s: 3+Math.random()*4, rot: Math.random()*6, vr: (Math.random()-0.5)*0.2,
+        col: Math.random()<0.5 ? '#5FB04C' : '#E0A35A' });
+    }
   }
-  rainParticles.forEach(p => { p.y += p.speed; p.x -= 0.8; });
-  rainParticles = rainParticles.filter(p => p.y < h);
+  ambientParticles.forEach(p => {
+    if (ambientType === 'ember')      { p.y += p.vy; p.x += p.vx; p.life -= 0.012; }
+    else if (ambientType === 'snow')  { p.sway += 0.05; p.y += p.vy; p.x += p.vx + Math.sin(p.sway)*0.4; }
+    else                              { p.rot += p.vr; p.y += p.vy; p.x += p.vx; }
+  });
+  ambientParticles = ambientParticles.filter(p =>
+    ambientType === 'ember' ? p.life > 0 : p.y < h + 12);
 }
 
-function drawRain(ctx, w, h) {
-  if (weatherType !== 'rainy') return;
+function drawAmbient(ctx, w, h) {
+  if (ambientType === 'none') return;
   ctx.save();
-  ctx.strokeStyle = 'rgba(174,214,241,0.55)';
-  ctx.lineWidth = 1.2;
-  rainParticles.forEach(p => {
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-    ctx.lineTo(p.x - 1, p.y + p.len);
-    ctx.stroke();
+  ambientParticles.forEach(p => {
+    if (ambientType === 'ember') {
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = (p.life > 0.6) ? '#FFD27A' : '#FF7A30';
+      ctx.fillRect(p.x, p.y, p.s, p.s);
+    } else if (ambientType === 'snow') {
+      ctx.globalAlpha = 0.85; ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(p.x, p.y, p.s, p.s);
+    } else {
+      ctx.globalAlpha = 0.9;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = p.col; ctx.fillRect(-p.s/2, -p.s/2, p.s, p.s*0.6);
+      ctx.restore();
+    }
   });
   ctx.restore();
 }
 
 function drawWeatherClouds(ctx, w, h) {
+  const b = getBiome();
   const baseY = h * 0.07;
-  const alpha = weatherType === 'sunny' ? 0.95 : 0.8;
-  const clr = weatherType === 'rainy' ? '#B4B4B9' : '#FFFFFF';
+  const alpha = (activeBiome === 'volcano') ? 0.7 : 0.92;
+  const clr = b.cloud || '#FFFFFF';
   const u = Math.max(8, Math.round(h * 0.022));   // cloud "pixel" size
   // Each cloud = a chunky pixel blob (cols of varying height)
   const clouds = [
@@ -1433,17 +1574,122 @@ function drawWeatherClouds(ctx, w, h) {
   ctx.restore();
 }
 
-function startWeatherAnim() {
+function startAmbientAnim() {
   if (weatherAnimId) cancelAnimationFrame(weatherAnimId);
   function loop() {
-    if (weatherType === 'rainy' && gameMode !== 'select') {
+    if (ambientType !== 'none' && gameMode !== 'select') {
       redrawGrid();
       weatherAnimId = requestAnimationFrame(loop);
     } else {
       weatherAnimId = null;
     }
   }
-  if (weatherType === 'rainy') weatherAnimId = requestAnimationFrame(loop);
+  if (ambientType !== 'none') weatherAnimId = requestAnimationFrame(loop);
+}
+
+// ── Biome scenery (blocky skyline props standing on the horizon) ──────────────
+function drawBiomeScenery(ctx, w, horizon) {
+  const baseY = horizon;
+  const u = Math.max(4, Math.round(horizon * 0.09));   // block unit
+  const R = (x, y, ww, hh, col) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(Math.round(x), Math.round(y), Math.round(ww), Math.round(hh));
+  };
+  ctx.save();
+  const spots = [0.05, 0.19, 0.75, 0.92];   // x fractions, clear of the centre grid
+  switch (activeBiome) {
+    case 'desert':
+      spots.forEach((fx, i) => _propCactus(R, w*fx, baseY, u*(i%2 ? 0.85 : 1.15)));
+      _propSun(R, w*0.84, horizon*0.34, u*1.1);
+      _propCritter(R, w*0.27, baseY, u*0.8, '#C9A24E', '#9A7A30');
+      break;
+    case 'snow':
+      spots.forEach((fx, i) => _propPine(R, w*fx, baseY, u*(i%2 ? 0.9 : 1.2)));
+      _propCritter(R, w*0.30, baseY, u*0.8, '#FFFFFF', '#CBDBE7');
+      break;
+    case 'jungle':
+      spots.forEach((fx, i) => _propTree(R, w*fx, baseY, u*(i%2 ? 1.0 : 1.35), '#1F4D17', '#3F7F33'));
+      _propCritter(R, w*0.28, baseY, u*0.9, '#E0533A', '#9E2E1C');   // little red dino
+      _propBird(R, w*0.70, horizon*0.5, u*0.7);
+      break;
+    case 'volcano':
+      _propVolcano(R, w*0.09, baseY, u*1.6);
+      _propVolcano(R, w*0.89, baseY, u*1.2);
+      _propRock(R, w*0.22, baseY, u);
+      _propRock(R, w*0.77, baseY, u*0.8);
+      break;
+    default: // plains
+      spots.forEach((fx, i) => _propTree(R, w*fx, baseY, u*(i%2 ? 0.95 : 1.25), '#3B6B22', '#5FA83C'));
+      _propBush(R, w*0.30, baseY, u);
+      _propCritter(R, w*0.70, baseY, u*0.85, '#5FA83C', '#3B6B22');
+      break;
+  }
+  ctx.restore();
+}
+
+function _propTree(R, x, baseY, u, dark, light) {
+  R(x - u*0.4, baseY - u*2.2, u*0.8, u*2.2, '#6E4A28');     // trunk
+  R(x - u*1.6, baseY - u*3.4, u*3.2, u*1.3, dark);          // canopy base
+  R(x - u*1.1, baseY - u*4.4, u*2.2, u*1.1, light);         // canopy mid
+  R(x - u*0.6, baseY - u*5.1, u*1.2, u*0.8, light);         // canopy top
+}
+function _propBush(R, x, baseY, u) {
+  R(x - u, baseY - u*1.2, u*2, u*1.2, '#3F7F33');
+  R(x - u*0.6, baseY - u*1.6, u*1.2, u*0.5, '#5FB04C');
+}
+function _propCactus(R, x, baseY, u) {
+  const g = '#3E8E41';
+  R(x - u*0.4, baseY - u*3, u*0.8, u*3, g);
+  R(x - u*0.4, baseY - u*3, u*0.8, u*0.4, '#56A85B');
+  R(x - u*1.3, baseY - u*2.2, u*0.9, u*0.55, g); R(x - u*1.3, baseY - u*2.6, u*0.5, u*1, g);
+  R(x + u*0.5, baseY - u*1.8, u*0.9, u*0.55, g); R(x + u*0.9, baseY - u*2.6, u*0.5, u*1.2, g);
+}
+function _propSun(R, x, y, u) {
+  R(x - u, y - u, u*2, u*2, '#FFD54A');
+  R(x - u*0.6, y - u*1.4, u*1.2, u*0.4, '#FFE89A');
+}
+function _propPine(R, x, baseY, u) {
+  const g = '#2F6B3A', cap = '#FFFFFF';
+  R(x - u*0.4, baseY - u, u*0.8, u, '#5A3E22');
+  R(x - u*1.6, baseY - u*2.0, u*3.2, u*1.0, g);
+  R(x - u*1.2, baseY - u*3.0, u*2.4, u*1.0, g);
+  R(x - u*0.8, baseY - u*3.9, u*1.6, u*1.0, g);
+  R(x - u*1.6, baseY - u*2.0, u*3.2, u*0.3, cap);
+  R(x - u*1.2, baseY - u*3.0, u*2.4, u*0.3, cap);
+  R(x - u*0.8, baseY - u*3.9, u*1.6, u*0.3, cap);
+  R(x - u*0.5, baseY - u*4.4, u*1.0, u*0.5, cap);
+}
+function _propVolcano(R, x, baseY, u) {
+  const rock = '#3B302D', rockL = '#4E403C';
+  for (let i = 0; i < 4; i++) {
+    const wRow = u*(5 - i*0.9);
+    R(x - wRow/2, baseY - u*(i+1), wRow, u, i%2 ? rock : rockL);
+  }
+  R(x - u*1.2, baseY - u*4.0, u*2.4, u*0.6, '#FF7A30');     // crater glow
+  R(x - u*0.7, baseY - u*4.3, u*1.4, u*0.4, '#FFD27A');
+  R(x - u*1.6, baseY - u*3.2, u*0.4, u*1.4, '#FF5A20');     // lava drips
+  R(x + u*1.0, baseY - u*2.6, u*0.35, u*1.0, '#FF5A20');
+  R(x - u*0.8, baseY - u*5.2, u*1.6, u*0.8, 'rgba(90,70,64,0.85)');  // smoke
+  R(x - u*0.3, baseY - u*6.0, u*1.0, u*0.7, 'rgba(110,90,84,0.7)');
+}
+function _propRock(R, x, baseY, u) {
+  R(x - u, baseY - u*1.2, u*2, u*1.2, '#3B302D');
+  R(x - u*0.7, baseY - u*1.5, u*1, u*0.5, '#4E403C');
+  R(x - u*0.2, baseY - u*0.8, u*0.4, u*0.4, '#FF7A30');
+}
+function _propBird(R, x, y, u) {
+  R(x - u*0.8, y, u*0.8, u*0.4, '#1F4D17');   // wing
+  R(x, y - u*0.2, u*0.9, u*0.5, '#E0A35A');   // body
+  R(x + u*0.7, y - u*0.4, u*0.4, u*0.4, '#C56A3A'); // head
+}
+// A tiny blocky four-legged critter silhouette
+function _propCritter(R, x, baseY, u, col, colD) {
+  R(x - u, baseY - u*0.9, u*1.8, u*0.7, col);      // body
+  R(x + u*0.6, baseY - u*1.5, u*0.7, u*0.8, col);  // head
+  R(x - u*1.4, baseY - u*1.3, u*0.5, u*0.5, colD); // raised tail
+  R(x - u*0.8, baseY - u*0.2, u*0.3, u*0.4, colD); // legs
+  R(x + u*0.4, baseY - u*0.2, u*0.3, u*0.4, colD);
+  R(x + u*1.05, baseY - u*1.25, u*0.18, u*0.18, '#1A1A1A'); // eye
 }
 
 // ── Dino decorations ──────────────────────────────────────────────────────────
@@ -1493,9 +1739,12 @@ function _startDinoEvent(loopPath, pxPath) {
   dinoLoop_path = loopPath;
   dinoRunning   = false;
   brokenCells.clear();
+  dinoDebris = [];
 
   // Pick a random species for this visit
   currentDino = DINO_TYPES[Math.floor(Math.random() * DINO_TYPES.length)];
+  // Record it in the player's Dino Dex (cute collection)
+  const _firstTime = _recordDinoSeen(currentDino.key);
 
   // Vary how many tracks get smashed (2–4) and where along the loop
   const n = loopPath.length;
@@ -1546,10 +1795,16 @@ function _startDinoEvent(loopPath, pxPath) {
     </div>`;
   document.body.appendChild(warn);
   _playDinoRoar();
+  setTimeout(() => _playSpeciesRoar(currentDino.key), 550);   // its actual voice
 
   setTimeout(() => {
     warn.style.animation = 'dinoWarnOut 0.4s ease-in forwards';
-    setTimeout(() => { warn.remove(); _runDinoLoop(); }, 400);
+    setTimeout(() => {
+      warn.remove();
+      _runDinoLoop();
+      // After the rampage, celebrate any newly-discovered species
+      if (_firstTime) setTimeout(_showDinoDiscovered, 200);
+    }, 400);
   }, 2000);
 }
 
@@ -1618,6 +1873,9 @@ function _runDinoLoop() {
         cellSize);
     });
 
+    // Flying voxel debris from smashed rails
+    _updateDrawDebris(trainCtx);
+
     // Draw T-Rex
     const legSwing = Math.sin(dinoPos * 0.5) * 8;
     _drawDinoWalker(trainCtx, wp.x, wp.y, wp.angle,
@@ -1638,10 +1896,65 @@ function _runDinoLoop() {
 function _doStomp(stomp, wp) {
   const key = `${stomp.r},${stomp.c}`;
   brokenCells.add(key);
+  // Burst of blocky debris from the smashed tile centre
+  const cx = drawOffsetX + stomp.c * cellSize + cellSize / 2;
+  const cy = drawOffsetY + stomp.r * cellSize + cellSize / 2;
+  _spawnDebris(cx, cy, cellSize);
   _playDinoStomp();
-  _playStompRoar();
-  _screenShake(10, 400);
+  _playSpeciesRoar(currentDino && currentDino.key);
+  _screenShake(12, 450);
   redrawGrid();
+}
+
+// Spawn flying voxel chunks coloured like a shattered rail (rail/tie/ballast/ground)
+function _spawnDebris(cx, cy, c) {
+  const cols = ['#C8C8C8', '#9A9A9A', '#7E5630', '#4A3019'];
+  const b = (typeof getBiome === 'function') ? getBiome() : null;
+  if (b) cols.push(b.base, b.tuftD);
+  const n = 18;
+  for (let i = 0; i < n; i++) {
+    const a  = Math.random() * Math.PI * 2;
+    const sp = 2 + Math.random() * 5;
+    dinoDebris.push({
+      x: cx + (Math.random() - 0.5) * c * 0.5,
+      y: cy + (Math.random() - 0.5) * c * 0.3,
+      vx: Math.cos(a) * sp,
+      vy: -Math.abs(Math.sin(a) * sp) - 2.5 - Math.random() * 3.5,
+      size: Math.max(3, c * (0.07 + Math.random() * 0.07)),
+      col: cols[Math.floor(Math.random() * cols.length)],
+      rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.5,
+      life: 38 + Math.random() * 22, g: 0.45,
+    });
+  }
+  // A quick ground dust ring
+  for (let i = 0; i < 7; i++) {
+    const a = (Math.PI * 2 * i / 7);
+    dinoDebris.push({
+      x: cx, y: cy + c * 0.25,
+      vx: Math.cos(a) * (1.5 + Math.random()),
+      vy: -0.5 - Math.random(),
+      size: Math.max(4, c * 0.12), col: 'rgba(160,140,110,0.7)',
+      rot: 0, vr: 0, life: 22, g: 0.12, dust: true,
+    });
+  }
+}
+
+function _updateDrawDebris(ctx) {
+  dinoDebris = dinoDebris.filter(p => p.life > 0);
+  dinoDebris.forEach(p => {
+    p.vy += p.g; p.x += p.vx; p.y += p.vy; p.rot += p.vr; p.life--;
+    if (p.dust) { p.size += 0.6; p.vx *= 0.92; }
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, p.life / (p.dust ? 22 : 18)));
+    ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+    ctx.fillStyle = p.col;
+    ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+    if (!p.dust) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1;
+      ctx.strokeRect(-p.size / 2, -p.size / 2, p.size, p.size);
+    }
+    ctx.restore();
+  });
 }
 
 function _finishDinoEvent() {
@@ -1649,6 +1962,7 @@ function _finishDinoEvent() {
   cancelAnimationFrame(dinoAnimId);
   trainCtx.clearRect(0, 0, trainCanvas.width, trainCanvas.height);
   brokenCells.clear();
+  dinoDebris = [];
 
   // Convert stomped preset tiles to new gaps
   dinoStomps.forEach(s => {
@@ -1685,28 +1999,27 @@ function _screenShake(intensity, durationMs) {
   requestAnimationFrame(shake);
 }
 
+// Minecraft "destroy stage" look: the block is gouged out into a dark pit with
+// blocky pixel cracks — no smooth lines, no red.
 function _drawCrackOverlay(ctx, x, y, c) {
   ctx.save();
-  ctx.fillStyle = 'rgba(40,0,0,0.45)';
+  const u = c / 8;   // 8×8 voxel grid
+  // Darkened crater
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
   ctx.fillRect(x, y, c, c);
-  ctx.strokeStyle = '#B71C1C';
-  ctx.lineWidth = Math.max(2, c * 0.025);
-  const cks = [
-    [[0.15,0.25],[0.48,0.52],[0.82,0.42]],
-    [[0.48,0.52],[0.38,0.82]],
-    [[0.28,0.38],[0.48,0.52],[0.62,0.28]],
-    [[0.48,0.52],[0.72,0.72]],
-  ];
-  cks.forEach(pts => {
-    ctx.beginPath();
-    ctx.moveTo(x + c*pts[0][0], y + c*pts[0][1]);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(x + c*pts[i][0], y + c*pts[i][1]);
-    ctx.stroke();
-  });
-  ctx.fillStyle = '#6D4C41';
-  [[0.2,0.8],[0.75,0.85],[0.85,0.2],[0.1,0.5]].forEach(([fx,fy]) => {
-    ctx.beginPath(); ctx.arc(x+c*fx, y+c*fy, c*0.035, 0, Math.PI*2); ctx.fill();
-  });
+  // Raw dirt at the bottom of the pit
+  ctx.fillStyle = 'rgba(58,40,24,0.55)';
+  [[2,3],[3,3],[4,3],[3,4],[4,4],[5,4],[2,5],[4,5],[5,5],[3,6]].forEach(([gx,gy]) =>
+    ctx.fillRect(x + gx*u, y + gy*u, u, u));
+  // Jagged crack voxels (the classic spreading-crack pattern)
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  [[3,0],[3,1],[4,2],[3,3],[2,3],[4,4],[5,5],[4,5],[1,4],[0,5],
+   [6,3],[7,4],[2,6],[3,6],[5,7],[4,7]].forEach(([gx,gy]) =>
+    ctx.fillRect(x + gx*u, y + gy*u, u, u));
+  // A few lighter chipped edges to catch the light
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  [[3,2],[4,3],[2,4],[5,6]].forEach(([gx,gy]) =>
+    ctx.fillRect(x + gx*u, y + gy*u, u, u));
   ctx.restore();
 }
 
@@ -1901,6 +2214,44 @@ function _playStompRoar() {
     g2.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.45);
     o2.start(ac.currentTime + 0.05); o2.stop(ac.currentTime + 0.5);
   } catch(e) {}
+}
+
+// Distinct voice per species — trex roars, ptero screeches, bronto rumbles…
+function _playSpeciesRoar(key) {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ac.currentTime;
+    const tone = (type, f0, f1, dur, vol, delay = 0) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.connect(g); g.connect(ac.destination); o.type = type;
+      o.frequency.setValueAtTime(f0, now + delay);
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), now + delay + dur);
+      g.gain.setValueAtTime(0.0001, now + delay);
+      g.gain.exponentialRampToValueAtTime(vol, now + delay + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
+      o.start(now + delay); o.stop(now + delay + dur + 0.05);
+    };
+    switch (key) {
+      case 'trex':    // deep, powerful roar
+        tone('sawtooth', 220, 60, 0.5, 0.5);
+        tone('sine',      90, 30, 0.55, 0.4, 0.04);
+        break;
+      case 'tricera': // gruff two-note bellow
+        tone('square',   300, 150, 0.4, 0.30);
+        tone('sawtooth', 150,  90, 0.45, 0.22, 0.18);
+        break;
+      case 'bronto':  // long, gentle, very low rumble
+        tone('sine',     120, 55, 0.95, 0.5);
+        tone('triangle',  70, 38, 1.0,  0.3, 0.05);
+        break;
+      case 'ptero':   // high screech
+        tone('sawtooth', 900, 1550, 0.16, 0.22);
+        tone('sawtooth', 1500, 650, 0.22, 0.18, 0.13);
+        break;
+      default:
+        tone('sawtooth', 200, 60, 0.45, 0.4);
+    }
+  } catch (e) {}
 }
 
 // ── Grand Finale Celebration ──────────────────────────────────────────────────

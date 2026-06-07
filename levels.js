@@ -252,28 +252,32 @@ const LEVELS = [
     ],
   },
 
-  // Level 12: Medium rectangle rows 1-3, cols 2-5, 2 curve + 1 straight gaps
-  // Full loop: (1,2)se→(1,3)sh→(1,4)sh→(1,5)sw→(2,5)sv→(3,5)nw→(3,4)sh→(3,3)sh→(3,2)ne
-  //            →(2,2)sv→(1,2)se  ✓
-  // Gaps: (1,2)se, (3,5)nw, (3,3)sh
+  // Level 12: L-shaped loop (a notch cut from the top-right) — not an oval!
+  // Loop: (0,1)se→(0,2)sh→(0,3)sw→(1,3)ne→(1,4)sh→(1,5)sw→(2,5)sv→(3,5)nw
+  //       →(3,4)sh→(3,3)sh→(3,2)sh→(3,1)ne→(2,1)sv→(1,1)sv→(0,1)se  ✓
+  // (1,3)ne is the inner concave corner. Gaps: (0,3)sw, (1,3)ne, (3,3)sh
   {
     id: 12,
     group: 3,
     title: 'Level 12',
-    desc: 'Can you spot the curves? Three gaps!',
+    desc: 'An L-shaped track! Mind the inside corner!',
     preset: [
-      {r:1, c:3, type:'straight-h'},
+      {r:0, c:1, type:'curve-se'},
+      {r:0, c:2, type:'straight-h'},
       {r:1, c:4, type:'straight-h'},
       {r:1, c:5, type:'curve-sw'},
-      {r:2, c:2, type:'straight-v'},
       {r:2, c:5, type:'straight-v'},
-      {r:3, c:2, type:'curve-ne'},
+      {r:3, c:5, type:'curve-nw'},
       {r:3, c:4, type:'straight-h'},
+      {r:3, c:2, type:'straight-h'},
+      {r:3, c:1, type:'curve-ne'},
+      {r:2, c:1, type:'straight-v'},
+      {r:1, c:1, type:'straight-v'},
     ],
     gaps: [
-      {r:1, c:2, type:'curve-se'},
+      {r:0, c:3, type:'curve-sw'},
+      {r:1, c:3, type:'curve-ne'},
       {r:3, c:3, type:'straight-h'},
-      {r:3, c:5, type:'curve-nw'},
     ],
   },
 
@@ -398,32 +402,32 @@ const LEVELS = [
     ],
   },
 
-  // Level 17: Tall rectangle rows 0-4, cols 2-5, 4 mixed gaps
-  // Full loop: (0,2)se→(0,3)sh→(0,4)sh→(0,5)sw→(1,5)sv→(2,5)sv→(3,5)sv→(4,5)nw
-  //            →(4,4)sh→(4,3)sh→(4,2)ne→(3,2)sv→(2,2)sv→(1,2)sv→(0,2)se  ✓
-  // Gaps: (0,3)sh, (0,5)curve-sw, (4,4)sh, (3,2)sv
+  // Level 17: L-shaped loop with the notch on the TOP-LEFT (mirror of L12) — four gaps.
+  // Loop: (0,3)se→(0,4)sh→(0,5)sw→(1,5)sv→(2,5)sv→(3,5)nw→(3,4)sh→(3,3)sh→(3,2)sh
+  //       →(3,1)ne→(2,1)sv→(1,1)se→(1,2)sh→(1,3)nw→(0,3)se  ✓
+  // (1,3)nw is the inner concave corner. Gaps: (0,3)se, (1,1)se, (1,3)nw, (3,3)sh
   {
     id: 17,
     group: 4,
     title: 'Level 17',
-    desc: 'Tall rectangle, four gaps!',
+    desc: 'A backwards L — find both corners and two rails!',
     preset: [
-      {r:0, c:2, type:'curve-se'},
       {r:0, c:4, type:'straight-h'},
-      {r:1, c:2, type:'straight-v'},
+      {r:0, c:5, type:'curve-sw'},
       {r:1, c:5, type:'straight-v'},
-      {r:2, c:2, type:'straight-v'},
       {r:2, c:5, type:'straight-v'},
-      {r:4, c:2, type:'curve-ne'},
-      {r:4, c:3, type:'straight-h'},
-      {r:4, c:5, type:'curve-nw'},
-      {r:3, c:5, type:'straight-v'},
+      {r:3, c:5, type:'curve-nw'},
+      {r:3, c:4, type:'straight-h'},
+      {r:3, c:2, type:'straight-h'},
+      {r:3, c:1, type:'curve-ne'},
+      {r:2, c:1, type:'straight-v'},
+      {r:1, c:2, type:'straight-h'},
     ],
     gaps: [
-      {r:0, c:3, type:'straight-h'},
-      {r:0, c:5, type:'curve-sw'},
-      {r:3, c:2, type:'straight-v'},
-      {r:4, c:4, type:'straight-h'},
+      {r:0, c:3, type:'curve-se'},
+      {r:1, c:1, type:'curve-se'},
+      {r:1, c:3, type:'curve-nw'},
+      {r:3, c:3, type:'straight-h'},
     ],
   },
 
@@ -491,33 +495,34 @@ const LEVELS = [
     ],
   },
 
-  // Level 20: Loop rows 0-3, cols 2-6, 2 curves + 2 straights as gaps
-  // Full loop: (0,2)se→(0,3)sh→(0,4)sh→(0,5)sh→(0,6)sw
-  //            →(1,6)sv→(2,6)sv→(3,6)nw→(3,5)sh→(3,4)sh→(3,3)sh→(3,2)ne
-  //            →(2,2)sv→(1,2)sv→(0,2)se  ✓
-  // Gaps: (0,4)sh, (0,6)sw, (3,4)sh, (3,2)ne
+  // Level 20: FIGURE-8! Two loops joined by a 4-way cross at (2,3).
+  // Loop: (0,1)se→(0,2)sh→(0,3)sw→(1,3)sv→(2,3)CROSS(N→S)→(3,3)sv→(4,3)ne
+  //       →(4,4)sh→(4,5)nw→(3,5)sv→(2,5)sw→(2,4)sh→(2,3)CROSS(E→W)→(2,2)sh
+  //       →(2,1)ne→(1,1)sv→(0,1)se  ✓   (the cross is passed straight on each axis)
+  // Gaps: (2,3)cross, (2,5)sw, (3,3)sv, (4,4)sh
   {
     id: 20,
     group: 4,
     title: 'Level 20',
-    desc: 'Curves and straights — four gaps!',
+    desc: 'A figure-8! Drop the ✚ crossing in the middle!',
     preset: [
-      {r:0, c:2, type:'curve-se'},
-      {r:0, c:3, type:'straight-h'},
-      {r:0, c:5, type:'straight-h'},
-      {r:1, c:2, type:'straight-v'},
-      {r:1, c:6, type:'straight-v'},
-      {r:2, c:2, type:'straight-v'},
-      {r:2, c:6, type:'straight-v'},
-      {r:3, c:3, type:'straight-h'},
-      {r:3, c:5, type:'straight-h'},
-      {r:3, c:6, type:'curve-nw'},
+      {r:0, c:1, type:'curve-se'},
+      {r:0, c:2, type:'straight-h'},
+      {r:0, c:3, type:'curve-sw'},
+      {r:1, c:1, type:'straight-v'},
+      {r:1, c:3, type:'straight-v'},
+      {r:2, c:1, type:'curve-ne'},
+      {r:2, c:2, type:'straight-h'},
+      {r:2, c:4, type:'straight-h'},
+      {r:3, c:5, type:'straight-v'},
+      {r:4, c:3, type:'curve-ne'},
+      {r:4, c:5, type:'curve-nw'},
     ],
     gaps: [
-      {r:0, c:4, type:'straight-h'},
-      {r:0, c:6, type:'curve-sw'},
-      {r:3, c:2, type:'curve-ne'},
-      {r:3, c:4, type:'straight-h'},
+      {r:2, c:3, type:'cross'},
+      {r:2, c:5, type:'curve-sw'},
+      {r:3, c:3, type:'straight-v'},
+      {r:4, c:4, type:'straight-h'},
     ],
   },
 
@@ -596,36 +601,35 @@ const LEVELS = [
     ],
   },
 
-  // Level 23: Tall loop rows 0-4, cols 1-6, all 4 corners + 1 mid-top as gaps
-  // Full loop: (0,1)se→(0,2)sh→(0,3)sh→(0,4)sh→(0,5)sh→(0,6)sw
-  //            →(1,6)sv→(2,6)sv→(3,6)sv→(4,6)nw→(4,5)sh→(4,4)sh→(4,3)sh→(4,2)sh→(4,1)ne
-  //            →(3,1)sv→(2,1)sv→(1,1)sv→(0,1)se  ✓
-  // Gaps: (0,1)se, (0,6)sw, (4,6)nw, (4,1)ne, (0,3)sh
+  // Level 23: BIG FIGURE-8! Two large loops joined by a 4-way cross at (2,3).
+  // Loop: (0,1)se→(0,2)sh→(0,3)sw→(1,3)sv→(2,3)CROSS(N→S)→(3,3)sv→(4,3)ne
+  //       →(4,4)sh→(4,5)sh→(4,6)nw→(3,6)sv→(2,6)sw→(2,5)sh→(2,4)sh→(2,3)CROSS(E→W)
+  //       →(2,2)sh→(2,1)ne→(1,1)sv→(0,1)se  ✓
+  // Gaps: (0,1)se, (2,3)cross, (2,6)sw, (4,3)ne, (4,6)nw
   {
     id: 23,
     group: 5,
     title: 'Level 23',
-    desc: 'Four curves plus a straight — got them all?',
+    desc: 'A giant figure-8 — five gaps including the ✚ crossing!',
     preset: [
       {r:0, c:2, type:'straight-h'},
-      {r:0, c:4, type:'straight-h'},
-      {r:0, c:5, type:'straight-h'},
+      {r:0, c:3, type:'curve-sw'},
       {r:1, c:1, type:'straight-v'},
-      {r:1, c:6, type:'straight-v'},
-      {r:2, c:1, type:'straight-v'},
-      {r:2, c:6, type:'straight-v'},
-      {r:3, c:1, type:'straight-v'},
+      {r:1, c:3, type:'straight-v'},
+      {r:2, c:1, type:'curve-ne'},
+      {r:2, c:2, type:'straight-h'},
+      {r:2, c:4, type:'straight-h'},
+      {r:2, c:5, type:'straight-h'},
+      {r:3, c:3, type:'straight-v'},
       {r:3, c:6, type:'straight-v'},
-      {r:4, c:2, type:'straight-h'},
-      {r:4, c:3, type:'straight-h'},
       {r:4, c:4, type:'straight-h'},
       {r:4, c:5, type:'straight-h'},
     ],
     gaps: [
       {r:0, c:1, type:'curve-se'},
-      {r:0, c:3, type:'straight-h'},
-      {r:0, c:6, type:'curve-sw'},
-      {r:4, c:1, type:'curve-ne'},
+      {r:2, c:3, type:'cross'},
+      {r:2, c:6, type:'curve-sw'},
+      {r:4, c:3, type:'curve-ne'},
       {r:4, c:6, type:'curve-nw'},
     ],
   },

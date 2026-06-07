@@ -938,3 +938,110 @@ img, canvas { image-rendering: pixelated; }
 
 #celebration-back:hover  { filter: brightness(1.1); transform: scale(1.05); }
 #celebration-back:active { transform: translateY(3px); }
+
+/* ── Collection bar + Dino Dex / Sticker Wall overlays ─────────────────────── */
+#ls-collection-bar {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+#btn-dino-dex  { background: var(--mc-emerald); border-color: var(--mc-emerald-dk); }
+#btn-stickers  { background: var(--mc-gold);    border-color: var(--mc-gold-dk); color: var(--ink); text-shadow: 1px 1px 0 rgba(255,255,255,0.4); }
+
+.collect-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.62);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 250;
+  padding: 16px;
+}
+.collect-box {
+  background: var(--mc-wood);
+  background-image: linear-gradient(180deg, var(--mc-wood-lt), var(--mc-wood));
+  border: 4px solid var(--mc-wood-dk);
+  padding: 22px 26px 26px;
+  max-width: 540px;
+  width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  text-align: center;
+  position: relative;
+  animation: popIn 0.3s steps(5);
+}
+.collect-box::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 6px;
+  background: var(--mc-gold);
+}
+.collect-title {
+  font-family: 'Press Start 2P', monospace;
+  color: var(--mc-gold);
+  font-size: clamp(1rem, 4vw, 1.5rem);
+  text-shadow: 2px 2px 0 var(--mc-gold-dk), 3px 3px 0 rgba(0,0,0,0.5);
+  margin-bottom: 8px;
+}
+.collect-sub {
+  color: #FFF3D6;
+  font-size: 1.2rem;
+  margin-bottom: 16px;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.4);
+}
+.collect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.collect-card {
+  background: var(--mc-stone);
+  background-image: linear-gradient(180deg, var(--mc-stone-lt), var(--mc-stone));
+  border: 3px solid var(--mc-stone-dk);
+  padding: 8px 6px 10px;
+  display: flex; flex-direction: column; align-items: center;
+  transition: transform 0.1s;
+}
+.collect-card.unlocked { border-color: var(--mc-emerald-dk); cursor: pointer; }
+.collect-card.unlocked:hover  { transform: translateY(-3px); filter: brightness(1.08); }
+.collect-card.unlocked:active { transform: translateY(2px); }
+.collect-card.locked { filter: brightness(0.92); opacity: 0.92; }
+.dex-portrait { width: 100%; height: auto; image-rendering: pixelated; }
+.collect-name {
+  margin-top: 6px;
+  font-size: 1.15rem;
+  color: #fff;
+  text-shadow: 1px 1px 0 rgba(0,0,0,0.5);
+}
+.collect-card.locked .collect-name { color: #cfcfd6; }
+
+.sticker-grid {
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.sticker-slot {
+  aspect-ratio: 1 / 1;
+  display: flex; align-items: center; justify-content: center;
+  font-size: clamp(1.3rem, 5vw, 1.9rem);
+  border: 3px solid var(--mc-stone-dk);
+  background: rgba(0,0,0,0.22);
+}
+.sticker-slot.earned {
+  background: linear-gradient(180deg, var(--mc-stone-lt), var(--mc-stone));
+  border-color: var(--mc-gold-dk);
+  animation: popIn 0.3s steps(4);
+}
+.sticker-slot.locked { opacity: 0.6; }
+
+.collect-close {
+  background: var(--mc-stone); color: #fff;
+  border: 3px solid var(--mc-stone-dk);
+  padding: 10px 30px;
+  font-family: inherit;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: transform 0.1s;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.4);
+}
+.collect-close:hover  { filter: brightness(1.12); transform: translateY(-2px); }
+.collect-close:active { transform: translateY(3px); }

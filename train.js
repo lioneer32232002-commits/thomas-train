@@ -10,6 +10,16 @@ let smokeParticles = [];
 let carriageCount = 0;
 let carriageGapWP  = 5;
 
+// Cute egg surprises that hatch into trailing baby dinos (purely decorative)
+let eggs = [];
+let hatchlings = [];
+const BABY_COLORS = [
+  { body:'#F5912E', dark:'#8F3F0E', belly:'#FFE0A8' },
+  { body:'#6FC2E0', dark:'#2E6E8C', belly:'#CFF0FF' },
+  { body:'#C77DD8', dark:'#6E2E80', belly:'#F2D8F8' },
+  { body:'#7DC850', dark:'#3B6B22', belly:'#D8F0B0' },
+];
+
 const CARRIAGE_COLORS      = ['#E53935','#43A047','#F9A825','#FB8C00','#7B1FA2'];
 const CARRIAGE_ROOF_COLORS = ['#B71C1C','#2E7D32','#F57F17','#E65100','#4A148C'];
 
@@ -37,6 +47,17 @@ function startTrain(path, numCarriages) {
   carriageGapWP  = getCarriageGapWP(path);
   animRunning = true;
   smokeParticles = [];
+  // Scatter a couple of eggs along the track for the cart to hatch
+  eggs = [];
+  hatchlings = [];
+  if (path.length > 18) {
+    const nEggs = 2 + Math.floor(Math.random() * 2);   // 2–3 eggs
+    for (let i = 0; i < nEggs; i++) {
+      const frac = (i + 1) / (nEggs + 1) + (Math.random() - 0.5) * 0.08;
+      const idx = Math.max(4, Math.min(path.length - 2, Math.floor(frac * path.length)));
+      eggs.push({ idx, hatched: false, bob: Math.random() * 6 });
+    }
+  }
   animLoop();
 }
 
@@ -100,6 +121,21 @@ function animLoop() {
     trainCtx.restore();
   }
 
+  // Eggs sit on the track ahead; the cart hatches them as it passes
+  _drawEggs(trainCtx);
+  _updateEggs(idx);
+
+  // Hatched babies trail behind the train (furthest back drawn first)
+  for (let hi = hatchlings.length - 1; hi >= 0; hi--) {
+    const hl = hatchlings[hi];
+    const bIdx = ((idx - hl.lag) % animPath.length + animPath.length) % animPath.length;
+    const bWp = animPath[bIdx];
+    if (!bWp) continue;
+    if (bWp.special === 'tunnel') trainCtx.globalAlpha = 0.3;
+    drawBabyDino(trainCtx, bWp.x, bWp.y, bWp.angle, hl.col, trainPos);
+    trainCtx.globalAlpha = 1;
+  }
+
   // Draw carriages (furthest first so Thomas renders on top)
   for (let ci = carriageCount - 1; ci >= 0; ci--) {
     const offset = (ci + 1) * carriageGapWP;
@@ -148,26 +184,39 @@ function drawThomas(ctx, x, y, angle) {
   R(-hw * 0.62, wy - px * 0.4, hw * 1.24, px * 0.8, '#2A2A2A'); // axle bar
 
   // ── Dino rider (drawn before the cart's front wall so it sits "inside") ──
-  const G = '#5FA83C', GD = '#3B6B22', GL = '#7DC850';
+  // Vivid orange so the rider pops against green grass, blue sky and the grey cart.
+  const G = '#F5912E', GD = '#8F3F0E', GL = '#FFC25A', GB = '#FFE0A8';
+  // Outline helper — a 1px dark border around a block for that blocky "mob" read
+  const RO = (x0, y0, ww, hgt, col) => {
+    ctx.fillStyle = col; ctx.fillRect(x0, y0, ww, hgt);
+    ctx.strokeStyle = GD; ctx.lineWidth = Math.max(1, px * 0.32);
+    ctx.strokeRect(x0, y0, ww, hgt);
+  };
   // tail poking out the back
   R(-hw - px * 1.2, -hh - px * 0.5, px * 2.4, px * 1.6, GD);
   // body block down inside the cart
-  R(-px * 1.5, -hh - px * 1.2, px * 4, px * 3, G);
+  RO(-px * 1.5, -hh - px * 1.2, px * 4, px * 3, G);
+  R(-px * 1.0, -hh - px * 0.6, px * 3, px * 1.4, GB);      // lighter belly
   // neck
-  R(px * 0.6, -hh - px * 4.5, px * 2.6, px * 3.6, G);
+  RO(px * 0.6, -hh - px * 4.5, px * 2.6, px * 3.6, G);
   // head
-  R(px * 1.2, -hh - px * 7.6, px * 4.6, px * 3.4, G);
+  RO(px * 1.2, -hh - px * 7.6, px * 4.6, px * 3.4, G);
   R(px * 1.4, -hh - px * 7.4, px * 4.2, px * 0.8, GL);     // top highlight
-  ctx.strokeStyle = GD; ctx.lineWidth = Math.max(1, px * 0.35);
-  ctx.strokeRect(px * 1.2, -hh - px * 7.6, px * 4.6, px * 3.4);
   // snout (forward +x)
-  R(px * 5.4, -hh - px * 6.3, px * 2.4, px * 2.0, G);
+  RO(px * 5.4, -hh - px * 6.3, px * 2.4, px * 2.0, G);
   // eye
   R(px * 3.4, -hh - px * 6.8, px * 1.3, px * 1.3, '#FFFFFF');
   R(px * 3.9, -hh - px * 6.4, px * 0.7, px * 0.7, '#1A1A1A');
   // teeth
   R(px * 5.6, -hh - px * 4.4, px * 0.6, px * 0.7, '#FFFFFF');
   R(px * 6.6, -hh - px * 4.4, px * 0.6, px * 0.7, '#FFFFFF');
+  // back spikes for a stronger dino silhouette
+  ctx.fillStyle = GD;
+  ctx.beginPath();
+  ctx.moveTo(px * 1.0, -hh - px * 7.4);
+  ctx.lineTo(px * 0.2, -hh - px * 8.6);
+  ctx.lineTo(px * 1.6, -hh - px * 7.8);
+  ctx.closePath(); ctx.fill();
   // tiny arm
   R(px * 4.4, -hh - px * 1.6, px * 1.2, px * 1.8, GD);
 
@@ -182,6 +231,94 @@ function drawThomas(ctx, x, y, angle) {
   ctx.fillStyle = '#3A3A3A';
   [-hw + px, hw - px * 1.8].forEach(rx => { ctx.fillRect(rx, hh - px * 1.8, px * 0.8, px * 0.8); });
 
+  ctx.restore();
+}
+
+// ── Eggs & hatchlings ─────────────────────────────────────────────────────────
+function _updateEggs(engineIdx) {
+  for (const egg of eggs) {
+    if (egg.hatched) continue;
+    if (engineIdx >= egg.idx) {           // cart has reached the egg this lap
+      egg.hatched = true;
+      const lag = (carriageCount + 1) * carriageGapWP
+                + hatchlings.length * Math.max(6, Math.round(carriageGapWP * 0.7));
+      hatchlings.push({ lag, col: BABY_COLORS[hatchlings.length % BABY_COLORS.length] });
+      _hatchBurst(animPath[egg.idx % animPath.length]);
+      try { _playHatch(); } catch (e) {}
+    }
+  }
+}
+
+function _hatchBurst(wp) {
+  if (!wp) return;
+  for (let i = 0; i < 9; i++) {
+    smokeParticles.push({
+      x: wp.x, y: wp.y - 6,
+      vx: (Math.random() - 0.5) * 2.4, vy: -1 - Math.random() * 2.2,
+      r: 2.5, life: 22, maxLife: 22, alpha: 0.75,
+    });
+  }
+}
+
+function _drawEggs(ctx) {
+  const c = (typeof cellSize === 'number' && cellSize) ? cellSize : 60;
+  for (const egg of eggs) {
+    if (egg.hatched) continue;
+    const wp = animPath[egg.idx % animPath.length];
+    if (!wp) continue;
+    egg.bob += 0.15;
+    _drawEgg(ctx, wp.x, wp.y - c * 0.16 + Math.sin(egg.bob) * c * 0.03, c * 0.5);
+  }
+}
+
+function _drawEgg(ctx, x, y, s) {
+  const w = s * 0.62, h = s * 0.82;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath(); ctx.ellipse(x, y + h * 0.55, w * 0.55, h * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#F3E6C8';
+  ctx.beginPath(); ctx.ellipse(x, y, w * 0.5, h * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#FFF6E2';
+  ctx.beginPath(); ctx.ellipse(x - w * 0.12, y - h * 0.13, w * 0.2, h * 0.22, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#B98750';
+  [[0.18, -0.05, 0.10], [-0.10, 0.18, 0.08], [0.06, 0.32, 0.07], [-0.22, -0.04, 0.06]]
+    .forEach(([dx, dy, r]) => {
+      ctx.beginPath(); ctx.ellipse(x + dx * w, y + dy * h, r * w, r * h, 0, 0, Math.PI * 2); ctx.fill();
+    });
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.ellipse(x, y, w * 0.5, h * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+// A tiny running baby dino that follows the train (blocky, big-headed, cute)
+function drawBabyDino(ctx, x, y, angle, col, t) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (Math.cos(angle) < -0.1) ctx.scale(-1, 1);
+  const c  = (typeof cellSize === 'number' && cellSize) ? cellSize : 60;
+  const s  = c * 0.17;
+  const px = s / 4;
+  const R  = (x0, y0, w, h, cc) => { ctx.fillStyle = cc; ctx.fillRect(x0, y0, w, h); };
+  const swing = Math.sin(t * 0.5) * px * 1.3;
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.beginPath(); ctx.ellipse(0, s * 0.95, s * 0.7, s * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+  // little running legs
+  R(-px * 1.3, s * 0.4 + swing, px * 1.1, px * 2, col.dark);
+  R(px * 0.3,  s * 0.4 - swing, px * 1.1, px * 2, col.dark);
+  // tail
+  R(-s * 0.95, -px * 0.5, s * 0.55, px * 1.5, col.dark);
+  // body + belly
+  R(-s * 0.6, -s * 0.2, s * 1.1, s * 0.7, col.body);
+  R(-s * 0.4,  s * 0.05, s * 0.7, s * 0.3, col.belly);
+  // big cute head
+  R(s * 0.1, -s * 0.88, s * 0.82, s * 0.78, col.body);
+  // eye
+  R(s * 0.56, -s * 0.64, px * 1.2, px * 1.2, '#FFFFFF');
+  R(s * 0.73, -s * 0.60, px * 0.55, px * 0.55, '#1A1A1A');
+  // head outline for the blocky read
+  ctx.strokeStyle = col.dark; ctx.lineWidth = Math.max(1, px * 0.4);
+  ctx.strokeRect(s * 0.1, -s * 0.88, s * 0.82, s * 0.78);
   ctx.restore();
 }
 
