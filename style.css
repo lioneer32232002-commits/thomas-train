@@ -162,8 +162,11 @@ img, canvas { image-rendering: pixelated; }
 .pc-avatar {
   font-size: 2.4rem;
   flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px;
   filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.4));
 }
+.pc-avatar canvas { display: block; image-rendering: pixelated; }
 
 .pc-info { flex: 1; min-width: 0; }
 .pc-name {
@@ -249,7 +252,12 @@ img, canvas { image-rendering: pixelated; }
   width: 88%;
   animation: celebCardIn 0.4s steps(5) both;
 }
-#name-dialog-emoji { font-size: 3rem; margin-bottom: 6px; filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.4)); }
+#name-dialog-emoji {
+  font-size: 3rem; margin-bottom: 6px;
+  min-height: 58px;
+  display: flex; align-items: center; justify-content: center;
+  filter: drop-shadow(2px 2px 0 rgba(0,0,0,0.4));
+}
 #name-dialog-title {
   color: var(--mc-gold);
   font-size: 1.5rem;
@@ -263,18 +271,27 @@ img, canvas { image-rendering: pixelated; }
   justify-content: center;
   margin-bottom: 14px;
   flex-wrap: wrap;
+  max-width: 380px;
 }
 
-/* Hot-bar item slots */
+/* Hot-bar item slots — each shows a blocky dino + its name */
 .dino-opt {
-  font-size: 1.9rem;
   background: rgba(0,0,0,0.28);
   border: 3px solid var(--mc-stone-dk);
-  width: 54px; height: 54px;
+  width: 64px; padding: 4px 2px 3px;
   cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  gap: 2px;
   transition: transform 0.1s;
   flex-shrink: 0;
+}
+.dino-opt canvas { display: block; image-rendering: pixelated; }
+.dino-opt-name {
+  font-size: 0.52rem;
+  line-height: 1.05;
+  color: #FFF8D6;
+  text-align: center;
+  word-break: break-word;
 }
 .dino-opt:hover { transform: scale(1.12); background: rgba(255,255,255,0.12); }
 .dino-opt.selected {

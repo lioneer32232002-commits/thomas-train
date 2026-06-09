@@ -70,6 +70,48 @@ const DINO_TYPES = [
   { key:'ptero',   name:'A Pterodactyl',   emoji:'🦅', warn:'A Pterodactyl is dive-bombing!', draw:_drawDinoPtero },
 ];
 
+// ── Player avatar dinosaurs ─────────────────────────────────────────────────────
+// 10 genuinely-different blocky dinosaurs for the "pick a dino" picker. Each entry
+// reuses (or adds) a voxel draw(ctx, S, attack, swing) renderer so the avatar matches
+// the Minecraft-style art instead of relying on emoji (which only has 🦖 and 🦕).
+const DINO_SPECIES = [
+  { key:'trex',     name:'T-Rex',             draw:_drawDinoTRex },
+  { key:'tricera',  name:'Triceratops',       draw:_drawDinoTricera },
+  { key:'bronto',   name:'Brontosaurus',      draw:_drawDinoBronto },
+  { key:'ptero',    name:'Pterodactyl',       draw:_drawDinoPtero },
+  { key:'stego',    name:'Stegosaurus',       draw:_drawDinoStego },
+  { key:'raptor',   name:'Velociraptor',      draw:_drawDinoRaptor },
+  { key:'spino',    name:'Spinosaurus',       draw:_drawDinoSpino },
+  { key:'parasaur', name:'Parasaurolophus',   draw:_drawDinoParasaur },
+  { key:'anky',     name:'Ankylosaurus',      draw:_drawDinoAnky },
+  { key:'pachy',    name:'Pachycephalosaurus',draw:_drawDinoPachy },
+];
+
+// Build a crisp little canvas thumbnail of one species (used in the picker & cards).
+function _makeDinoCanvas(key, px) {
+  const dpr = window.devicePixelRatio || 1;
+  const c = document.createElement('canvas');
+  c.width = Math.round(px * dpr); c.height = Math.round(px * dpr);
+  c.style.width = px + 'px'; c.style.height = px + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const sp = DINO_SPECIES.find(s => s.key === key) || DINO_SPECIES[0];
+  ctx.save();
+  ctx.translate(px * 0.50, px * 0.58);
+  sp.draw(ctx, px * 0.27, 0, 0);
+  ctx.restore();
+  return c;
+}
+
+// Render an avatar into an element. New profiles store a species key; older saves
+// may still hold a raw emoji string — fall back to showing that as text.
+function _setDinoAvatar(el, avatar, px) {
+  el.innerHTML = '';
+  const sp = DINO_SPECIES.find(s => s.key === avatar);
+  if (!sp) { el.textContent = avatar || '🦖'; return; }
+  el.appendChild(_makeDinoCanvas(avatar, px));
+}
+
 // ── Hint system ───────────────────────────────────────────────────────────────
 let hintsRemaining = 0;
 let hintsRevealed  = new Set();   // "r,c" keys whose hint icon has been revealed
@@ -517,7 +559,7 @@ function buildProfileCards() {
     card.className = 'profile-card';
     card.dataset.id = p.id;
     card.innerHTML = `
-      <span class="pc-avatar">${p.avatar || '🦖'}</span>
+      <span class="pc-avatar"></span>
       <div class="pc-info">
         <div class="pc-name">${_esc(p.name)}</div>
         <div class="pc-stats">${completedCount} / 25 levels &nbsp;·&nbsp; ⭐ ${score} pts</div>
@@ -525,6 +567,7 @@ function buildProfileCards() {
       <button class="pc-play">Play!</button>
       <button class="pc-del" title="Delete player">🗑️</button>
     `;
+    _setDinoAvatar(card.querySelector('.pc-avatar'), p.avatar, 40);
 
     // 點「出發」進入遊戲
     card.querySelector('.pc-play').addEventListener('click', () => {
@@ -574,19 +617,29 @@ function showNameDialog(onConfirm, onCancel) {
 
   // 重設狀態
   input.value = '';
-  let selectedAvatar = '🦖';
-  emojiEl.textContent = selectedAvatar;
+  let selectedAvatar = 'trex';
 
-  // 恐龍選擇按鈕
-  const optBtns = dialog.querySelectorAll('.dino-opt');
-  optBtns.forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.emoji === selectedAvatar);
+  // 恐龍選擇按鈕 — 10 隻不同的方塊恐龍
+  const picker = document.getElementById('name-dino-picker');
+  picker.innerHTML = '';
+  DINO_SPECIES.forEach(sp => {
+    const btn = document.createElement('button');
+    btn.className = 'dino-opt' + (sp.key === selectedAvatar ? ' selected' : '');
+    btn.dataset.key = sp.key;
+    btn.title = sp.name;
+    btn.appendChild(_makeDinoCanvas(sp.key, 42));
+    const label = document.createElement('span');
+    label.className = 'dino-opt-name';
+    label.textContent = sp.name;
+    btn.appendChild(label);
     btn.onclick = () => {
-      selectedAvatar = btn.dataset.emoji;
-      emojiEl.textContent = selectedAvatar;
-      optBtns.forEach(b => b.classList.toggle('selected', b === btn));
+      selectedAvatar = sp.key;
+      _setDinoAvatar(emojiEl, sp.key, 56);
+      picker.querySelectorAll('.dino-opt').forEach(b => b.classList.toggle('selected', b === btn));
     };
+    picker.appendChild(btn);
   });
+  _setDinoAvatar(emojiEl, selectedAvatar, 56);
 
   dialog.style.display = 'flex';
   setTimeout(() => input.focus(), 80);
@@ -1117,7 +1170,7 @@ function createProfile(name, avatar) {
   const s = _loadStore();
   if (s.profiles.length >= MAX_PROFILES) return null;
   const id = 'p' + Date.now();
-  s.profiles.push({ id, name: name.trim().slice(0, 10), avatar: avatar || '🦖', completed: [], dinoLevels: [], dinoDex: [] });
+  s.profiles.push({ id, name: name.trim().slice(0, 10), avatar: avatar || 'trex', completed: [], dinoLevels: [], dinoDex: [] });
   s.currentId = id;
   _saveStore(s);
   return id;
@@ -2184,6 +2237,155 @@ function _drawDinoPtero(ctx, S, attack, swing) {
   R(S*0.26, -S*0.14, S*0.07, S*0.07, '#fff');
   R(S*0.29, -S*0.12, S*0.035, S*0.035, '#1A1A1A');
   ctx.restore();
+}
+
+function _drawDinoStego(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#7A8B5A', D='#54603C', P='#D08A38', B='#9DAE7C';
+  const bob = Math.sin(swing*0.15)*S*0.02;
+  _dinoShadow(ctx, S, S*0.66+bob);
+  R(-S*0.34, S*0.18+bob, S*0.15, S*0.40, D);
+  R(-S*0.10, S*0.20+bob, S*0.15, S*0.40, D);
+  R(S*0.14,  S*0.18+bob, S*0.15, S*0.40, D);
+  R(S*0.34,  S*0.20+bob, S*0.13, S*0.40, D);
+  R(-S*0.78, -S*0.02+bob, S*0.34, S*0.16, G);
+  R(-S*1.00, S*0.02+bob, S*0.24, S*0.12, D);
+  R(-S*1.06, -S*0.12+bob, S*0.06, S*0.10, B);
+  R(-S*1.06, S*0.10+bob, S*0.06, S*0.10, B);
+  R(-S*0.50, -S*0.18+bob, S*0.92, S*0.40, G);
+  R(-S*0.42, S*0.00+bob, S*0.60, S*0.18, B);
+  R(S*0.40, -S*0.04+bob, S*0.26, S*0.22, G);
+  R(S*0.60, S*0.02+bob, S*0.10, S*0.14, D);
+  R(S*0.50, S*0.02+bob, S*0.06, S*0.06, '#fff');
+  R(S*0.52, S*0.04+bob, S*0.03, S*0.03, '#1A1A1A');
+  ctx.fillStyle = P;
+  const plate=(cx,h)=>{ctx.beginPath();ctx.moveTo(cx-S*0.11,-S*0.18+bob);ctx.lineTo(cx,-S*0.18-h+bob);ctx.lineTo(cx+S*0.11,-S*0.18+bob);ctx.closePath();ctx.fill();};
+  plate(-S*0.22, S*0.30); plate(0, S*0.40); plate(S*0.22, S*0.30);
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(-S*0.50, -S*0.18+bob, S*0.92, S*0.40);
+}
+
+function _drawDinoRaptor(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#C98A4A', D='#8A5828', B='#E6C490';
+  const bob = Math.sin(swing*0.15)*S*0.03;
+  _dinoShadow(ctx, S, S*0.66+bob);
+  R(-S*0.86, -S*0.20+bob, S*0.46, S*0.12, G);
+  R(-S*1.06, -S*0.26+bob, S*0.24, S*0.10, D);
+  R(-S*0.10, S*0.06+bob, S*0.15, S*0.40, D);
+  R(-S*0.16, S*0.46+bob, S*0.26, S*0.10, D);
+  R(-S*0.40, -S*0.20+bob, S*0.62, S*0.40, G);
+  R(-S*0.32, -S*0.02+bob, S*0.42, S*0.18, B);
+  R(S*0.06, S*0.06+bob, S*0.13, S*0.34, D);
+  R(S*0.06, S*0.40+bob, S*0.20, S*0.08, D);
+  R(S*0.24, S*0.30+bob, S*0.06, S*0.12, '#fff');
+  R(S*0.10, -S*0.02+bob, S*0.16, S*0.07, D);
+  R(S*0.14, -S*0.40+bob, S*0.16, S*0.26, G);
+  R(S*0.26, -S*0.44+bob, S*0.34, S*0.20, G);
+  R(S*0.54, -S*0.34+bob, S*0.16, S*0.10, D);
+  R(S*0.40, -S*0.40+bob, S*0.06, S*0.06, '#fff');
+  R(S*0.42, -S*0.38+bob, S*0.03, S*0.03, '#1A1A1A');
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(-S*0.40, -S*0.20+bob, S*0.62, S*0.40);
+}
+
+function _drawDinoSpino(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#3E8E8E', D='#286060', P='#79BEBE', B='#A6D8D8';
+  const bob = Math.sin(swing*0.15)*S*0.025;
+  _dinoShadow(ctx, S, S*0.66+bob);
+  ctx.fillStyle=P;
+  ctx.beginPath();
+  ctx.moveTo(-S*0.44, -S*0.18+bob);
+  ctx.quadraticCurveTo(-S*0.10, -S*0.92+bob, S*0.24, -S*0.18+bob);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02); ctx.stroke();
+  R(-S*0.82, -S*0.04+bob, S*0.40, S*0.14, G);
+  R(-S*1.04, S*0.00+bob, S*0.24, S*0.12, D);
+  R(-S*0.16, S*0.14+bob, S*0.15, S*0.42, D);
+  R(S*0.10, S*0.16+bob, S*0.15, S*0.42, D);
+  R(-S*0.46, -S*0.18+bob, S*0.80, S*0.40, G);
+  R(-S*0.38, S*0.00+bob, S*0.52, S*0.18, B);
+  R(S*0.28, -S*0.16+bob, S*0.16, S*0.18, G);
+  R(S*0.40, -S*0.22+bob, S*0.46, S*0.16, G);
+  R(S*0.40, -S*0.08+bob, S*0.42, S*0.07, D);
+  R(S*0.46, -S*0.18+bob, S*0.05, S*0.05, '#fff');
+  R(S*0.48, -S*0.16+bob, S*0.025, S*0.025, '#1A1A1A');
+  ctx.strokeRect(-S*0.46, -S*0.18+bob, S*0.80, S*0.40);
+}
+
+function _drawDinoParasaur(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#9BB04E', D='#6E7E34', C='#C76B8A', B='#C8D88E';
+  const bob = Math.sin(swing*0.15)*S*0.025;
+  _dinoShadow(ctx, S, S*0.66+bob);
+  R(-S*0.80, -S*0.02+bob, S*0.38, S*0.16, G);
+  R(-S*1.02, S*0.04+bob, S*0.24, S*0.12, D);
+  R(-S*0.14, S*0.16+bob, S*0.16, S*0.42, D);
+  R(S*0.12, S*0.18+bob, S*0.16, S*0.42, D);
+  R(-S*0.46, -S*0.16+bob, S*0.78, S*0.40, G);
+  R(-S*0.38, S*0.02+bob, S*0.50, S*0.18, B);
+  R(S*0.18, -S*0.52+bob, S*0.10, S*0.20, C);
+  R(S*0.04, -S*0.60+bob, S*0.20, S*0.10, C);
+  R(-S*0.10, -S*0.58+bob, S*0.18, S*0.09, C);
+  R(S*0.24, -S*0.34+bob, S*0.16, S*0.26, G);
+  R(S*0.36, -S*0.40+bob, S*0.28, S*0.20, G);
+  R(S*0.60, -S*0.34+bob, S*0.16, S*0.10, D);
+  R(S*0.44, -S*0.36+bob, S*0.06, S*0.06, '#fff');
+  R(S*0.46, -S*0.34+bob, S*0.03, S*0.03, '#1A1A1A');
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(-S*0.46, -S*0.16+bob, S*0.78, S*0.40);
+}
+
+function _drawDinoAnky(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#8A9488', D='#5C645A', A='#B8C0B0';
+  const bob = Math.sin(swing*0.15)*S*0.02;
+  _dinoShadow(ctx, S, S*0.62+bob);
+  R(-S*0.78, S*0.04+bob, S*0.36, S*0.16, G);
+  R(-S*1.02, -S*0.02+bob, S*0.22, S*0.26, A);
+  R(-S*1.04, -S*0.04+bob, S*0.24, S*0.06, D);
+  R(-S*0.32, S*0.28+bob, S*0.16, S*0.28, D);
+  R(-S*0.06, S*0.30+bob, S*0.16, S*0.28, D);
+  R(S*0.18, S*0.28+bob, S*0.16, S*0.28, D);
+  R(-S*0.50, -S*0.02+bob, S*0.92, S*0.36, G);
+  R(-S*0.48, -S*0.06+bob, S*0.88, S*0.12, A);
+  R(-S*0.40, -S*0.16+bob, S*0.08, S*0.10, A);
+  R(-S*0.12, -S*0.18+bob, S*0.08, S*0.12, A);
+  R(S*0.16, -S*0.16+bob, S*0.08, S*0.10, A);
+  R(S*0.40, S*0.06+bob, S*0.24, S*0.22, G);
+  R(S*0.60, S*0.12+bob, S*0.08, S*0.12, D);
+  R(S*0.46, S*0.10+bob, S*0.06, S*0.06, '#fff');
+  R(S*0.48, S*0.12+bob, S*0.03, S*0.03, '#1A1A1A');
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(-S*0.50, -S*0.02+bob, S*0.92, S*0.36);
+}
+
+function _drawDinoPachy(ctx, S, attack, swing) {
+  const R = (x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(x,y,w,h);};
+  const G='#9B7BB0', D='#6C4F80', DOME='#C7A6DC', B='#C6AED8';
+  const bob = Math.sin(swing*0.15)*S*0.03;
+  _dinoShadow(ctx, S, S*0.66+bob);
+  R(-S*0.80, -S*0.06+bob, S*0.40, S*0.12, G);
+  R(-S*1.00, -S*0.10+bob, S*0.24, S*0.10, D);
+  R(-S*0.10, S*0.10+bob, S*0.16, S*0.40, D);
+  R(-S*0.16, S*0.50+bob, S*0.26, S*0.08, D);
+  R(-S*0.38, -S*0.18+bob, S*0.56, S*0.40, G);
+  R(-S*0.30, S*0.00+bob, S*0.38, S*0.18, B);
+  R(S*0.06, S*0.10+bob, S*0.13, S*0.36, D);
+  R(S*0.06, S*0.46+bob, S*0.18, S*0.08, D);
+  R(S*0.12, -S*0.36+bob, S*0.16, S*0.22, G);
+  ctx.fillStyle=DOME;
+  ctx.beginPath(); ctx.arc(S*0.34, -S*0.42+bob, S*0.22, Math.PI, 2*Math.PI); ctx.fill();
+  R(S*0.12, -S*0.42+bob, S*0.44, S*0.10, DOME);
+  R(S*0.50, -S*0.36+bob, S*0.06, S*0.06, D);
+  R(S*0.12, -S*0.36+bob, S*0.06, S*0.06, D);
+  R(S*0.44, -S*0.30+bob, S*0.18, S*0.14, G);
+  R(S*0.58, -S*0.24+bob, S*0.08, S*0.08, D);
+  R(S*0.46, -S*0.28+bob, S*0.06, S*0.06, '#fff');
+  R(S*0.48, -S*0.26+bob, S*0.03, S*0.03, '#1A1A1A');
+  ctx.strokeStyle=D; ctx.lineWidth=Math.max(1,S*0.02);
+  ctx.strokeRect(-S*0.38, -S*0.18+bob, S*0.56, S*0.40);
 }
 
 function _playDinoRoar() {
