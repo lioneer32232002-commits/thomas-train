@@ -1,14 +1,29 @@
 #!/usr/bin/env python3
-"""Render the Dino Rail Craft Open-Graph banner in blocky Minecraft pixel style.
+"""Render the Dino Rail Craft art in blocky Minecraft pixel style.
 
-This is the authoritative renderer for og-banner.png (1200x630). The in-browser
-generator generate-og-banner.html mirrors this design for manual re-export.
+This is the authoritative renderer for:
+  - og-banner.png        (1200x630 social share image)
+  - apple-touch-icon.png (512x512 square app icon)
+The in-browser generator generate-og-banner.html mirrors the banner design.
 """
 from PIL import Image
 
 W, H = 1200, 630
-img = Image.new("RGB", (W, H), (0, 0, 0))
-px = img.load()
+
+# Active render target — set via use() so helpers can draw to any image.
+CUR_PX = None
+CUR_W = 0
+CUR_H = 0
+
+
+def use(image):
+    global CUR_PX, CUR_W, CUR_H
+    CUR_PX = image.load()
+    CUR_W, CUR_H = image.size
+    return image
+
+
+img = use(Image.new("RGB", (W, H), (0, 0, 0)))
 
 
 # ── primitives ────────────────────────────────────────────────────────────────
@@ -17,12 +32,11 @@ def rect(x, y, w, h, c):
     x1, y1 = int(x + w), int(y + h)
     if x0 < 0: x0 = 0
     if y0 < 0: y0 = 0
-    if x1 > W: x1 = W
-    if y1 > H: y1 = H
+    if x1 > CUR_W: x1 = CUR_W
+    if y1 > CUR_H: y1 = CUR_H
     for yy in range(y0, y1):
-        row = yy * W
         for xx in range(x0, x1):
-            px[xx, yy] = c
+            CUR_PX[xx, yy] = c
 
 
 def blend(a, b, t):
@@ -423,3 +437,66 @@ play_button(x2 + w2 + 3 * sc, y2, sc)
 
 img.save("og-banner.png")
 print("wrote og-banner.png", img.size)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SQUARE APP ICON — apple-touch-icon.png (512x512)
+# Reuses the dino-minecart hero on a compact blocky landscape.
+# ════════════════════════════════════════════════════════════════════════════
+IW = 512
+icon = use(Image.new("RGB", (IW, IW), (0, 0, 0)))
+
+# sky bands
+iground = 300
+iband = 12
+for y in range(0, iground, iband):
+    t = y / iground
+    c = blend(SKY_TOP, SKY_MID, t) if t < 0.6 else blend(SKY_MID, SKY_LOW, (t - 0.6) / 0.4)
+    rect(0, y, IW, iband, c)
+
+# sun + cloud
+draw_sun(440, 70)
+cloud(40, 50, 9)
+
+# rolling hills
+hill(120, iground, 95, HILL_FAR)
+hill(380, iground, 110, HILL_FAR)
+hill(260, iground, 80, HILL_NEAR)
+tree(70, iground + 4, 7)
+tree(450, iground + 6, 7)
+
+# grass + dirt
+rect(0, iground, IW, 10, GRASS_TOP)
+rect(0, iground + 10, IW, 14, GRASS)
+for x in range(0, IW, 9):
+    if rnd() > 0.5:
+        rect(x, iground - 3, 3, 3, GRASS_TOP)
+y = iground + 24
+ri = 0
+while y < IW:
+    for x in range(0, IW, BS):
+        rect(x, y, BS, BS, DIRT if ri % 2 == 0 else blend(DIRT, DIRT_DK, 0.18))
+        for _ in range(4):
+            sx = x + int(rnd() * (BS - 6)); sy = y + int(rnd() * (BS - 6))
+            rect(sx, sy, 6, 6, DIRT_DK if rnd() > 0.45 else DIRT_LT)
+        rect(x, y, BS, 2, DIRT_DK)
+        rect(x, y, 2, BS, blend(DIRT, DIRT_DK, 0.4))
+    y += BS; ri += 1
+
+# rails
+irail = iground + 44
+for x in range(-10, IW + 20, 44):
+    rect(x, irail - 4, 28, 36, TIE)
+    rect(x, irail - 4, 28, 5, TIE_LT)
+rect(0, irail - 9, IW, 7, RAIL); rect(0, irail - 4, IW, 3, RAIL_DK)
+rect(0, irail + 28, IW, 7, RAIL); rect(0, irail + 34, IW, 3, RAIL_DK)
+
+# floating stars
+gold_star(70, 120, 6)
+gold_star(440, 200, 6)
+
+# hero dino-minecart, centred
+draw_minecart_dino(256, irail - 6, 16)
+
+icon.save("apple-touch-icon.png")
+print("wrote apple-touch-icon.png", icon.size)
